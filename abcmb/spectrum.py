@@ -34,12 +34,18 @@ try:
 except Exception:
     pass
 
+
 # large-x asymptotic expansion of spherical bessel functions
-Q = lambda l, x: jnp.sqrt(x**2 - l**2) - l * jnp.pi / 2 + l * jnp.arcsin(l / x)
-J = lambda l, x: (
-    jnp.sqrt(2 / jnp.pi / jnp.sqrt(x**2 - l**2)) * jnp.cos(Q(l, x) - jnp.pi / 4)
-)
-j = lambda l, x: jnp.sqrt(jnp.pi / 2 / x) * J(l + 1 / 2, x)
+def Q(l, x):
+    return jnp.sqrt(x**2 - l**2) - l * jnp.pi / 2 + l * jnp.arcsin(l / x)
+
+
+def J(l, x):
+    return jnp.sqrt(2 / jnp.pi / jnp.sqrt(x**2 - l**2)) * jnp.cos(Q(l, x) - jnp.pi / 4)
+
+
+def j(l, x):
+    return jnp.sqrt(jnp.pi / 2 / x) * J(l + 1 / 2, x)
 
 
 def phi0(i, x):
@@ -422,7 +428,9 @@ class SpectrumSolver(eqx.Module):
         """
 
         coeff = 8.0 * jnp.pi**2 / (ells + 0.5) ** 3
-        chi = lambda lna: BG.tau0 - BG.tau(lna)
+
+        def chi(lna):
+            return BG.tau0 - BG.tau(lna)
 
         # The previous jnp.nan_to_num(integrand, nan=0.) here masked the
         # forward NaN but left a 0*NaN cotangent in the backward through
@@ -757,9 +765,8 @@ class SpectrumSolver(eqx.Module):
 
         # Perturbations, all (Nlna, Nk) 2D vectors
         # Cubic Spline is necessary here for accuracy.
-        interp_column = lambda col: CubicSpline(jnp.log10(PT.k), col, check=False)(
-            jnp.log10(k_axis)
-        )
+        def interp_column(col):
+            return CubicSpline(jnp.log10(PT.k), col, check=False)(jnp.log10(k_axis))
 
         # Found that this is much much faster than RegularGridInterpolator
         photon_sp = PT.species_perturbations["Photon"]

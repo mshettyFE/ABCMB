@@ -289,12 +289,14 @@ class BackgroundPreRecomb(eqx.Module):
         """
 
         lna_cut = -16.1  # use analytic approx before this
+
         # Analytic early-time approximation
-        tau_approx = lambda lna: (
-            jnp.exp(lna)
-            / (cnst.H0_over_h / cnst.c_Mpc_over_s)
-            / jnp.sqrt(params["omega_r"])
-        )
+        def tau_approx(lna):
+            return (
+                jnp.exp(lna)
+                / (cnst.H0_over_h / cnst.c_Mpc_over_s)
+                / jnp.sqrt(params["omega_r"])
+            )
 
         lna_end = self.lna_tau_tab[-1]
 
@@ -755,9 +757,10 @@ class Background(BackgroundPreRecomb):
         Also computes time derivative of optical depth, which is the
         integrand involving the free electron fraction.
         """
-        integrand = lambda lna, y, args: (
-            -1.0 / self.tau_c(lna, params) / self.aH(lna, params)
-        )
+
+        def integrand(lna, y, args):
+            return -1.0 / self.tau_c(lna, params) / self.aH(lna, params)
+
         term = ODETerm(integrand)
         stepsize_controller = PIDController(
             pcoeff=0.4, icoeff=0.3, dcoeff=0, rtol=1.0e-10, atol=1.0e-10
@@ -892,12 +895,15 @@ class Background(BackgroundPreRecomb):
         array
             Tabulated baryon optical depth values (units: dimensionless)
         """
-        integrand = lambda lna, y, args: jnp.float64(
-            -1.0
-            / self.tau_c(lna, params)
-            / self.aH(lna, params)
-            / (self.R_ratio_lna(lna, params))
-        )
+
+        def integrand(lna, y, args):
+            return jnp.float64(
+                -1.0
+                / self.tau_c(lna, params)
+                / self.aH(lna, params)
+                / (self.R_ratio_lna(lna, params))
+            )
+
         term = ODETerm(integrand)
         stepsize_controller = PIDController(
             pcoeff=0.4, icoeff=0.3, dcoeff=0, rtol=1.0e-3, atol=1.0e-6
@@ -941,11 +947,13 @@ class Background(BackgroundPreRecomb):
         # initial condition assuming cs**2 = 1/3 at early times
         rs0 = 1.0 / jnp.sqrt(3) / (self.aH(self.lna_tau_tab[0], params))
 
-        integrand = lambda lna, y, args: (
-            1.0
-            / jnp.sqrt(3 * (1 + self.R_ratio_lna(lna, params)))
-            / (self.aH(lna, params))
-        )
+        def integrand(lna, y, args):
+            return (
+                1.0
+                / jnp.sqrt(3 * (1 + self.R_ratio_lna(lna, params)))
+                / (self.aH(lna, params))
+            )
+
         term = ODETerm(integrand)
         stepsize_controller = PIDController(
             pcoeff=0.4, icoeff=0.3, dcoeff=0, rtol=1.0e-3, atol=1.0e-6

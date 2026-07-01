@@ -1,24 +1,11 @@
-import os
-
-from classy import Class
-
-os.environ.setdefault("JAX_PLATFORM_NAME", "cpu")
-file_dir = os.path.dirname(__file__)
-
-import sys
-
-sys.path.append(file_dir + "/../")
-# print(os.getcwd())
-import jax
-
-jax.config.update("jax_enable_x64", True)
-jax.config.update("jax_debug_nans", True)
 import numpy as np
 import pytest
+from classy import Class
 
 from abcmb import species
 from abcmb.main import Model
 
+# JAX platform, x64, and debug_nans are configured in conftest.py.
 np.seterr(all="raise")
 
 

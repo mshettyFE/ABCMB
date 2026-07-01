@@ -90,3 +90,8 @@ extend-select = ["I"]
 # `l` is the standard multipole-moment symbol throughout this CMB code
 # (the Output.l attribute, etc.), so don't flag it as an ambiguous name.
 ignore = ["E741"]
+
+[tool.ruff.lint.per-file-ignores]
+# Sphinx conf.py must manipulate sys.path before importing the package for
+# autodoc, so module-level imports legitimately follow other statements.
+"docs/conf.py" = ["E402"]

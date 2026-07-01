@@ -9,8 +9,6 @@ import numpy as np
 from jax import config, lax
 from jaxtyping import Array
 
-file_dir = os.path.dirname(__file__)
-
 from . import background, model_specs, perturbations, spectrum
 from . import constants as cnst
 from .ABCMBTools import bilinear_interp
@@ -26,6 +24,8 @@ from .linx import thermo as linxThermo
 from .linx.abundances import AbundanceModel
 from .linx.background import BackgroundModel
 from .linx.nuclear import NuclearRates
+
+file_dir = os.path.dirname(__file__)
 
 config.update("jax_enable_x64", True)
 
