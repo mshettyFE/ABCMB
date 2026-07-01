@@ -1190,7 +1190,6 @@ class MassiveNeutrino(Fluid):
         params = args
         a = jnp.exp(lna)
         T = params["T_nu_massive"] * params["TCMB0"] / a  # (N,)
-        x = params["m_nu_massive"] / T  # (N,)
 
         res = 0.0
         for i in range(3):

@@ -1,5 +1,6 @@
 import os
 
+import diffrax
 import equinox as eqx
 import jax.numpy as jnp
 import optimistix as optx

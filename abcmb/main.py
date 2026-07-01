@@ -420,9 +420,9 @@ class Model(eqx.Module):
 
         ### CHECKING INPUT COMPATIBILITY ###
 
-        input_N = params.get("N_nu_massless") != None
-        input_Neff = params.get("Neff") != None
-        input_T_nu_massless = params.get("T_nu_massless") != None
+        input_N = params.get("N_nu_massless") is not None
+        input_Neff = params.get("Neff") is not None
+        input_T_nu_massless = params.get("T_nu_massless") is not None
 
         # If the user input both massless neutrino number and Neff, throw an error. Our code treats these as 1-to-1, see paper.
         if input_N and input_Neff:
@@ -522,13 +522,6 @@ class Model(eqx.Module):
             YHe_grid = YHe_all.reshape(n2, n1)
 
             # Neff = params["Neff"] # less extensible option
-            a_bbn = (
-                cnst.TCMB_today * 1e-6 / 0.01
-            )  # neutrino decoupling is well over by 10 keV, so
-            # compute Neff at a scale factor approximately
-            # corresponding to this temperature
-            lna_bbn = jnp.log(a_bbn)
-
             # Comprehensive Neff, includes all relativsitic species at early times.
             Neff_BBN = params["Neff"]
 
@@ -590,7 +583,7 @@ class Model(eqx.Module):
                 YHe_BBN = jax.device_put(
                     4 * abundances[5], device=jax.devices("gpu")[0]
                 )
-            except:  # no GPU
+            except Exception:  # no GPU
                 params["T_nu_massless"] = linxThermo.T_nu(
                     rho_nu_vec[-1]
                 ) / linxThermo.T_g(rho_g_vec[-1])

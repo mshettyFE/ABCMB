@@ -31,7 +31,7 @@ try:
     phi1_tab = jax.device_put(phi1_tab, device=gpus[0])
     xphi2_tab = jax.device_put(xphi2_tab, device=gpus[0])
     phi2_tab = jax.device_put(phi2_tab, device=gpus[0])
-except:
+except Exception:
     pass
 
 # large-x asymptotic expansion of spherical bessel functions

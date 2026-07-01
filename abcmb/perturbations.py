@@ -193,7 +193,6 @@ class PerturbationEvolver(eqx.Module):
         """
         BG, params = args
         ### CLASS Initial Conditions ###
-        a = jnp.exp(lna_ini)
         tau_ini = BG.tau(lna_ini)
 
         om = params["om"]

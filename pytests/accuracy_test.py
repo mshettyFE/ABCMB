@@ -118,10 +118,8 @@ def test_accuracy_checker(h=0.6762):
         # ABCMB
 
         output = model(params)
-        ells = output.l
 
         ABC_tt = output.ClTT
-        ABC_te = output.ClTE
         ABC_ee = output.ClEE
 
         # Compare Cltt
