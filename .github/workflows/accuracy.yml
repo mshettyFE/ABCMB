@@ -17,11 +17,16 @@ jobs:
         with:
           enable-cache: true
 
-      - name: Ruff lint
-        run: uvx ruff@0.15.20 check .
+      - name: Cache pre-commit environments
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
 
-      - name: Ruff format check
-        run: uvx ruff@0.15.20 format --check .
+      # Runs the commit-stage hooks (ruff lint + format). The pre-push pytest
+      # hook is excluded here; tests run in the `build` job below.
+      - name: Run pre-commit (lint + format)
+        run: uvx pre-commit run --all-files --show-diff-on-failure
 
   build:
     runs-on: ubuntu-latest

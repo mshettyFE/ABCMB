@@ -46,6 +46,7 @@ test = [
 ]
 dev = [
     "ruff==0.15.20",
+    "pre-commit",
 ]
 
 [project.urls]
