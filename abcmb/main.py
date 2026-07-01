@@ -1,27 +1,31 @@
-from jax import jit, config, lax, tree_util
-import jax.numpy as jnp
-from jaxtyping import Array
-import numpy as np
-import equinox as eqx
+import os
+import sys
 
 import diffrax
+import equinox as eqx
 import jax
+import jax.numpy as jnp
+import numpy as np
+from jax import config, lax
+from jaxtyping import Array
 
-import sys
-import os
 file_dir = os.path.dirname(__file__)
 
-from .hyrex import hyrex
-from . import background, perturbations, spectrum, model_specs
+from . import background, model_specs, perturbations, spectrum
 from . import constants as cnst
 from .ABCMBTools import bilinear_interp
-from .background import BackgroundPreRecomb, Background, ReionizationModelFromZ, ReionizationModelFromTau
-
-from .linx.background import BackgroundModel
-from .linx.abundances import AbundanceModel
-from .linx.nuclear import NuclearRates
+from .background import (
+    Background,
+    BackgroundPreRecomb,
+    ReionizationModelFromTau,
+    ReionizationModelFromZ,
+)
+from .hyrex import hyrex
 from .linx import const as linxconst
 from .linx import thermo as linxThermo
+from .linx.abundances import AbundanceModel
+from .linx.background import BackgroundModel
+from .linx.nuclear import NuclearRates
 
 config.update("jax_enable_x64", True)
 

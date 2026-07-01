@@ -1,23 +1,24 @@
-from classy import Class
 import os
+
+from classy import Class
+
 os.environ.setdefault("JAX_PLATFORM_NAME", "cpu")
 file_dir = os.path.dirname(__file__)
 
 import sys
+
 sys.path.append(file_dir+'/../')
 # print(os.getcwd())
 import jax
+
 jax.config.update("jax_enable_x64", True)
 jax.config.update("jax_debug_nans", True)
-from abcmb.main import Model
-import abcmb.spectrum as spectrum
-from abcmb import species
-from scipy.interpolate import interp1d
-import jax.numpy as jnp
 import numpy as np
-import matplotlib.pyplot as plt
 import pytest
-import numpy as np
+
+from abcmb import species
+from abcmb.main import Model
+
 np.seterr(all='raise') 
 
 def test_accuracy_checker(h = 0.6762):

@@ -1,18 +1,25 @@
-import jax
-from jax import config, vmap, lax
-import numpy as np
-import jax.numpy as jnp
-import equinox as eqx
-from diffrax import diffeqsolve, ODETerm, Kvaerno5, Tsit5, SaveAt, PIDController, ForwardMode
-import optimistix as optx
+import os
 
-from .hyrex.array_with_padding import array_with_padding
-from .hyrex import recomb_functions
-from .hyrex.hyrex import RecombInputs
+import equinox as eqx
+import jax.numpy as jnp
+import optimistix as optx
+from diffrax import (
+    ForwardMode,
+    Kvaerno5,
+    ODETerm,
+    PIDController,
+    SaveAt,
+    Tsit5,
+    diffeqsolve,
+)
+from jax import config, lax, vmap
+
 from . import ABCMBTools as tools
 from . import constants as cnst
+from .hyrex import recomb_functions
+from .hyrex.array_with_padding import array_with_padding
+from .hyrex.hyrex import RecombInputs
 
-import os
 file_dir = os.path.dirname(__file__)
 config.update("jax_enable_x64", True)
 

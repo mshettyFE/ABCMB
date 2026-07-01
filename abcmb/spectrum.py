@@ -1,18 +1,14 @@
-import numpy as np
-import jax.numpy as jnp
+import os
+
 import equinox as eqx
 import jax
-from jax import vmap, jit, config, grad, lax
-from diffrax import diffeqsolve, ODETerm, Dopri5, Kvaerno3, Kvaerno5, Tsit5, SaveAt, PIDController, DiscreteTerminatingEvent
-from jax.scipy.interpolate import RegularGridInterpolator
-from functools import partial
+import jax.numpy as jnp
+import numpy as np
 from interpax import CubicSpline
-from scipy.special import spherical_jn
+from jax import config, grad, lax, vmap
 
 from . import ABCMBTools as tools
-from . import constants as cnst
 
-import os
 file_dir = os.path.dirname(__file__)
 
 config.update("jax_enable_x64", True)

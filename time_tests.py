@@ -1,12 +1,14 @@
 import sys
+
 sys.path.append('../')
 
 import jax
+
 print(jax.devices())
 jax.config.update("jax_enable_x64", True)
-from abcmb.main import Model
-
 import time
+
+from abcmb.main import Model
 
 specs = {
     "output_Cl" : True,

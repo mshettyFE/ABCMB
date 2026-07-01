@@ -11,9 +11,11 @@ copyright = '2026, Zilu Zhou, Cara Giovanetti, and Hongwan Liu'
 author = 'Zilu Zhou, Cara Giovanetti, and Hongwan Liu'
 
 import sys
+
 sys.path.append('..')
 
 from abcmb.version import __version__
+
 release = __version__
 
 # -- General configuration ---------------------------------------------------
@@ -23,10 +25,11 @@ release = __version__
 # # Make sure Sphinx can import your code
 import os
 import sys
+
 sys.path.insert(0, os.path.abspath('..'))  # if your package is in repo root
 
 import re
-import sphinx
+
 from sphinx.util import logging
 
 logger = logging.getLogger(__name__)
@@ -154,7 +157,6 @@ def skip_equinox_field_attributes(app, what, name, obj, skip, options):
     Skip class attributes that are equinox fields to prevent duplicate documentation.
     These are already documented in the class docstring's Fields section.
     """
-    import inspect
     
     # Only process attributes
     if what not in ('attribute', 'data'):

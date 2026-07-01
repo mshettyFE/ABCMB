@@ -1,7 +1,8 @@
 #import abc
-from jax import config, lax, vmap
-import jax.numpy as jnp
 import equinox as eqx
+import jax.numpy as jnp
+from jax import config, lax, vmap
+
 from . import constants as cnst
 
 config.update("jax_enable_x64", True)

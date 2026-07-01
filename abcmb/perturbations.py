@@ -1,14 +1,13 @@
-import jax
-import jax.numpy as jnp
-import numpy as np
-from jax import vmap, lax
+import os
+
 import diffrax
 import equinox as eqx
+import jax
+import jax.numpy as jnp
+from jax import lax, vmap
 
 from . import constants as cnst
-from . import ABCMBTools as tools
 
-import os
 file_dir = os.path.dirname(__file__)
 jax.config.update("jax_enable_x64", True)
 
