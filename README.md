@@ -30,6 +30,50 @@ Note that both methods of installing will automatically attempt to install JAX f
 ## Examples
 We have included several pedagogical jupyter notebooks to walk you through how to get started with ABCMB in our [example_notebooks](https://github.com/TonyZhou729/ABCMB/tree/main/example_notebooks) folder.  We suggest you start with [ABCMB_basics](https://github.com/TonyZhou729/ABCMB/blob/main/example_notebooks/ABCMB_basics.ipynb) to get a sense of how to run the code.  If you'd like to add new physics to ABCMB, check out [ABCMB_Fluids](https://github.com/TonyZhou729/ABCMB/blob/main/example_notebooks/ABCMB_Fluids.ipynb).  If you'd like to run ABCMB with the Big Bang Nucleosynthesis (BBN) code [LINX](https://github.com/cgiovanetti/LINX/tree/main) to do BBN+CMB joint analyses, check out [ABCMB_with_LINX](https://github.com/TonyZhou729/ABCMB/blob/main/example_notebooks/ABCMB_with_LINX.ipynb).
 
+## Command-line usage
+ABCMB installs an `abcmb` command for running the solver from the shell without a
+notebook. Configuration comes from a [TOML](https://toml.io) file and/or positional
+`KEY=VALUE` assignments (which override the file). Both route each key to
+parameters vs model options by name, so you never have to say which is which:
+
+```
+# run with defaults
+abcmb -o out.npz
+
+# override a couple of values
+abcmb omega_cdm=0.12 h=0.68 lensing=true -o out.npz
+
+# drive everything from a config file
+abcmb --config cosmo.toml -o run/spectra
+```
+
+A config file uses TOML tables purely for readability — keys are routed to
+parameters vs model `options` by name, so a key placed in the "wrong" table still
+works:
+
+```toml
+[cosmology]
+omega_cdm = 0.12
+h         = 0.68
+
+[output]
+l_max   = 2500
+lensing = true
+```
+
+CLASS-style names are accepted as aliases (e.g. `N_ur`→`Neff`, `tau_reio`→`tau_reion`,
+`l_max_scalars`→`l_max`); unrecognized option names warn with a suggestion.
+
+**Reproducibility.** Every run writes a `<output>_run.toml` recording the raw
+inputs (as `[params]`/`[specs]` tables) and an environment stamp (package version,
+git commit + dirty flag, jax/jaxlib versions, device). That file is itself a valid
+`--config`: pass it back to reproduce the run — its recorded environment is
+drift-checked automatically, so you're warned if the code or environment moved:
+
+```
+abcmb --config out_run.toml -o rerun.npz
+```
+
 ## Issues
 Please feel free to open an issue if something is amiss in ABCMB!
 

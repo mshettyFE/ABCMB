@@ -20,6 +20,7 @@ from . import constants as cnst
 from .hyrex import recomb_functions
 from .hyrex.array_with_padding import array_with_padding
 from .hyrex.hyrex import RecombInputs
+from .species import Fluid
 
 file_dir = os.path.dirname(__file__)
 config.update("jax_enable_x64", True)
@@ -62,7 +63,7 @@ class BackgroundPreRecomb(eqx.Module):
     R_ratio_lna : Compute baryon drag ratio (units: dimensionless)
     """
 
-    species_list: tuple
+    species_list: tuple[Fluid, ...]
 
     lna_tau_tab = jnp.linspace(-33.0, 0.0, 10000)  # Axis for tabulating conformal time.
     tau_tab: jnp.array  # Tabulated conformal time.

@@ -8,8 +8,6 @@ jax.config.update("jax_enable_x64", True)
 print(jax.devices())
 
 specs = {
-    "output_Cl": True,
-    "output_Pk": True,
     "lensing": True,
 }
 

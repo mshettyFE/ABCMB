@@ -41,11 +41,9 @@ def test_accuracy_checker(h=0.6762):
 
         model = Model(
             user_species=user_species,
-            output_Cl=True,
             l_max=ellmax,
             lensing=True,
-            output_Pk=True,
-            output_k_max=0.5,
+            k_max=0.5,
             l_max_g=12,
             l_max_pol_g=10,
             l_max_ur=17,
@@ -56,12 +54,12 @@ def test_accuracy_checker(h=0.6762):
         # CLASS
         CLASS_params = {
             "output": "mPk, tCl, pCl, lCl"
-            if model.specs["lensing"]
+            if model.options["lensing"]
             else "mPk, tCl, pCl",
             # "temperature_contributions" : "tsw",
             "l_max_scalars": ellmax,
-            "P_k_max_1/Mpc": model.specs["output_k_max"],
-            "lensing": "yes" if model.specs["lensing"] else "no",
+            "P_k_max_1/Mpc": model.options["k_max"],
+            "lensing": "yes" if model.options["lensing"] else "no",
             "accurate_lensing": 1,
             "H0": full_params["h"] * 100,
             "omega_b": full_params["omega_b"],
@@ -78,10 +76,10 @@ def test_accuracy_checker(h=0.6762):
             "helium_fullreio_redshift": params["z_reion_He"],
             "helium_fullreio_width": params["Delta_z_reion_He"],
             "reionization_exponent": params["exp_reion"],
-            "l_max_g": model.specs["l_max_g"],
-            "l_max_pol_g": model.specs["l_max_pol_g"],
-            "l_max_ur": model.specs["l_max_ur"],
-            "l_max_ncdm": model.specs["l_max_ncdm"],
+            "l_max_g": model.options["l_max_g"],
+            "l_max_pol_g": model.options["l_max_pol_g"],
+            "l_max_ur": model.options["l_max_massless_nu"],
+            "l_max_ncdm": model.options["l_max_massive_nu"],
         }
 
         CLASS_Model = Class()
@@ -95,7 +93,7 @@ def test_accuracy_checker(h=0.6762):
             )
 
         CLASS_Model.compute()
-        if model.specs["lensing"]:
+        if model.options["lensing"]:
             cl = CLASS_Model.lensed_cl(ellmax)
         else:
             cl = CLASS_Model.raw_cl(ellmax)

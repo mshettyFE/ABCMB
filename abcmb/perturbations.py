@@ -7,6 +7,7 @@ import jax.numpy as jnp
 from jax import lax, vmap
 
 from . import constants as cnst
+from .species import Fluid
 
 file_dir = os.path.dirname(__file__)
 jax.config.update("jax_enable_x64", True)
@@ -35,7 +36,7 @@ class PerturbationEvolver(eqx.Module):
         they appear in species_list.
     k_axis_perturbations : jnp.array
         A list of wavenumbers k at which to compute perturbations
-    specs : dict
+    options : dict
         A dictionary containing run options
     adjoint : diffrax.adjoint
         Adjoint mode for diffrax solves.  Default is ForwardMode.
@@ -50,10 +51,10 @@ class PerturbationEvolver(eqx.Module):
     make_output_table : Create interpolatable perturbation table
     """
 
-    species_list: tuple
+    species_list: tuple[Fluid, ...]
     species_dict: dict
     k_axis_perturbations: jnp.array
-    specs: dict
+    options: dict
 
     adjoint: "diffrax.adjoint" = eqx.field(static=True)
 
@@ -62,13 +63,13 @@ class PerturbationEvolver(eqx.Module):
         species_list,
         species_dict,
         k_axis_perturbations=jnp.geomspace(1.0e-4, 0.4, 600),
-        specs={},
+        options={},
         adjoint=diffrax.ForwardMode,
     ):
         self.species_list = species_list
         self.species_dict = species_dict
         self.k_axis_perturbations = k_axis_perturbations
-        self.specs = specs
+        self.options = options
         self.adjoint = adjoint
 
     def full_evolution(self, args):
@@ -153,13 +154,13 @@ class PerturbationEvolver(eqx.Module):
         f1 = BG.tau_c(lna_start_range, params) * BG.aH(lna_start_range, params)
         # invert f1(lna) = thr1  →  lna = interp(thr1, f1, lna_range)
         lna1 = jnp.interp(
-            self.specs["R_tc"], f1, lna_start_range
+            self.options["R_tc"], f1, lna_start_range
         )  # jnp.interp ends up being
         # faster than fast_interp through here
         # b) τh/τk  →  f2(lna) = k / BG.aH
         f2 = k / BG.aH(lna_start_range, params)
         # invert f2(lna) = thr2
-        lna2 = jnp.interp(self.specs["R_large"], f2, lna_start_range)
+        lna2 = jnp.interp(self.options["R_large"], f2, lna_start_range)
 
         lna_ini = jnp.minimum(lna1, lna2)
 
@@ -327,21 +328,21 @@ class PerturbationEvolver(eqx.Module):
         solver = diffrax.Kvaerno5()
 
         rtol = jnp.where(
-            k > self.specs["k_split_PE"],
-            self.specs["rtol_large_k_PE"],
-            self.specs["rtol_small_k_PE"],
+            k > self.options["k_split_PE"],
+            self.options["rtol_large_k_PE"],
+            self.options["rtol_small_k_PE"],
         )
 
         atol = jnp.where(
-            k > self.specs["k_split_PE"],
-            self.specs["atol_large_k_PE"],
-            self.specs["atol_small_k_PE"],
+            k > self.options["k_split_PE"],
+            self.options["atol_large_k_PE"],
+            self.options["atol_small_k_PE"],
         )
 
         stepsize_controller = diffrax.PIDController(
-            pcoeff=self.specs["pcoeff_PE"],
-            icoeff=self.specs["icoeff_PE"],
-            dcoeff=self.specs["dcoeff_PE"],
+            pcoeff=self.options["pcoeff_PE"],
+            icoeff=self.options["icoeff_PE"],
+            dcoeff=self.options["dcoeff_PE"],
             rtol=rtol,
             atol=atol,
         )
@@ -356,7 +357,7 @@ class PerturbationEvolver(eqx.Module):
             dt0=1.0e-2,
             y0=y_ini,
             stepsize_controller=stepsize_controller,
-            max_steps=self.specs["max_steps_PE"],
+            max_steps=self.options["max_steps_PE"],
             saveat=saveat,
             args=(k, *args),
             adjoint=adjoint,

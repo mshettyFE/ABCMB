@@ -50,7 +50,7 @@ class Fluid(eqx.Module):
         default=False, static=True
     )  # Does the fluid contribute towards matter overdensity today.
 
-    def __init__(self, first_idx, specs):
+    def __init__(self, first_idx, options):
         self.first_idx = first_idx
         self.name = ""
         self.is_matter = False
@@ -279,8 +279,8 @@ class StandardFluid(Fluid):
     rho_plus_P_sigma : Compute standard shear perturbation (units: eV cm^{-3})
     """
 
-    def __init__(self, first_idx, specs):
-        super().__init__(first_idx, specs)
+    def __init__(self, first_idx, options):
+        super().__init__(first_idx, options)
 
     def get_delta(self, lna, y, args):
         """
@@ -415,8 +415,8 @@ class StandardFluid(Fluid):
 class BackgroundFluid(Fluid):
     num_equations = 0
 
-    def __init__(self, first_idx, specs):
-        super().__init__(first_idx, specs)
+    def __init__(self, first_idx, options):
+        super().__init__(first_idx, options)
 
     def y_ini(self, k, tau_ini, args):
         """
@@ -449,10 +449,6 @@ class DarkEnergy(BackgroundFluid):
 
     Represents a constant energy density fluid with negative pressure.
 
-    Required input parameters: None.
-
-    Required derived parameters: params['omega_Lambda']
-
     Methods:
     --------
     rho : Compute dark energy density (units: eV cm^{-3})
@@ -461,8 +457,8 @@ class DarkEnergy(BackgroundFluid):
 
     name = "DarkEnergy"
 
-    def __init__(self, first_idx, specs):
-        super().__init__(first_idx, specs)
+    def __init__(self, first_idx, options):
+        super().__init__(first_idx, options)
         self.name = "DarkEnergy"
 
     def rho(self, lna, args):
@@ -513,10 +509,6 @@ class ColdDarkMatter(StandardFluid):
     Non-relativistic, pressureless dark matter with density
     perturbations but no velocity or shear modes.
 
-    Required input parameters: params['omega_cdm'].
-
-    Required derived parameters: params['om'].
-
     Methods:
     --------
     rho : Compute cold dark matter density (units: eV cm^{-3})
@@ -529,8 +521,8 @@ class ColdDarkMatter(StandardFluid):
     num_equations = 1  # CDM only receives density perturbation in synchronous gauge.
     is_matter = True
 
-    def __init__(self, first_idx, specs):
-        super().__init__(first_idx, specs)
+    def __init__(self, first_idx, options):
+        super().__init__(first_idx, options)
         self.name = "ColdDarkMatter"
         self.is_matter = True
 
@@ -637,10 +629,6 @@ class MasslessNeutrino(StandardFluid):
 
     Represents relativistic neutrinos with multiple angular momentum modes.
 
-    Required input parameters: params['N_nu_massless'], params['T_nu_massless'], params['TCMB0']
-
-    Required derived parameters: params['R_nu'], params['om']
-
     Methods:
     --------
     rho : Compute neutrino density (units: eV cm^{-3})
@@ -649,10 +637,10 @@ class MasslessNeutrino(StandardFluid):
 
     name = "MasslessNeutrino"
 
-    def __init__(self, first_idx, specs):
-        super().__init__(first_idx, specs)
+    def __init__(self, first_idx, options):
+        super().__init__(first_idx, options)
         self.name = "MasslessNeutrino"
-        self.num_equations = specs["l_max_massless_nu"] + 1
+        self.num_equations = options["l_max_massless_nu"] + 1
 
     def rho(self, lna, args):
         """
@@ -838,11 +826,6 @@ class MassiveNeutrino(Fluid):
 
     Non-relativistic neutrinos with multiple angular momentum modes.
 
-    Required input parameters: params['N_nu_massive'], params['T_nu_massive'],
-    params['m_nu_massive'], params['TCMB0']
-
-    Required derived parameters: params['R_nu'], params['om']
-
     Attributes:
     -----------
     num_ells_per_bin : int
@@ -873,12 +856,12 @@ class MassiveNeutrino(Fluid):
     name = "MassiveNeutrino"
     is_matter = True
 
-    def __init__(self, first_idx, specs):
+    def __init__(self, first_idx, options):
 
-        super().__init__(first_idx, specs)
+        super().__init__(first_idx, options)
         self.name = "MassiveNeutrino"
         self.is_matter = True
-        self.num_ells_per_bin = specs["l_max_massive_nu"] + 1
+        self.num_ells_per_bin = options["l_max_massive_nu"] + 1
         self.num_equations = 3 * self.num_ells_per_bin
 
     def rho(self, lna, args):
@@ -1278,10 +1261,6 @@ class Baryon(StandardFluid):
 
     Non-relativistic baryons with density and velocity perturbations.
 
-    Required input parameters: params['omega_b'], params['YHe']
-
-    Required derived parameters: params['R_nu'], params['R_b'], params['om']
-
     Methods:
     --------
     rho : Compute baryon density (units: eV cm^{-3})
@@ -1296,8 +1275,8 @@ class Baryon(StandardFluid):
     num_equations = 2
     is_matter = True
 
-    def __init__(self, first_idx, specs):
-        super().__init__(first_idx, specs)
+    def __init__(self, first_idx, options):
+        super().__init__(first_idx, options)
         self.name = "Baryon"
         self.is_matter = True
 
@@ -1514,10 +1493,6 @@ class Photon(StandardFluid):
 
     Relativistic photons with temperature and polarization Boltzmann hierarchies.
 
-    Required input parameters: params['TCMB0']
-
-    Required derived parameters: params['R_nu'], params['R_nu'], params['om']
-
     Attributes:
     -----------
     num_F_ell_modes : int
@@ -1537,11 +1512,11 @@ class Photon(StandardFluid):
     num_G_ell_modes: int = eqx.field(static=True)
     name = "Photon"
 
-    def __init__(self, first_idx, specs):
-        super().__init__(first_idx, specs)
+    def __init__(self, first_idx, options):
+        super().__init__(first_idx, options)
         self.name = "Photon"
-        self.num_F_ell_modes = specs["l_max_g"] + 1
-        self.num_G_ell_modes = specs["l_max_pol_g"] + 1
+        self.num_F_ell_modes = options["l_max_g"] + 1
+        self.num_G_ell_modes = options["l_max_pol_g"] + 1
         self.num_equations = self.num_F_ell_modes + self.num_G_ell_modes
 
     def rho(self, lna, args):
