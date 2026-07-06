@@ -1,0 +1,190 @@
+"""
+File-driven entry points for ABCMB, shared by the CLI and notebooks.
+
+Drive a run from a TOML file (:func:`load_config`, :func:`model_from_config`),
+write a run's outputs plus a reproducible run file (:func:`save_run`), or emit the
+schema defaults as a starter config (:func:`dump_defaults`). Built on the input
+:mod:`~abcmb.schema` (resolution, routing) and the :mod:`~abcmb.provenance`
+primitives (environment capture, drift, TOML serialization).
+
+Importing this module pulls in JAX; ``import abcmb`` deliberately does not, so the
+notebook front door lives here rather than at the package top level.
+"""
+
+import os
+import tomllib
+
+import numpy as np
+
+from . import provenance, schema
+
+
+def load_config(path):
+    """
+    Load a TOML config file (or a saved ``<out>_run.toml``) into
+    ``(options, params, environment)`` — the shared front door for driving a run
+    from a file, from a notebook or the CLI.
+
+    Two shapes handled by one loader:
+
+    * **Explicit** — a file with ``[params]`` / ``[options]`` tables (as written by
+      a run) uses them directly; this is how a run file replays as a ``--config``.
+    * **Routing** — otherwise every non-reserved table is flattened and its keys
+      routed to options vs params by schema membership (:func:`schema.route`); a key
+      in the "wrong" table still routes correctly since ABCMB names are unique.
+
+    The reserved ``[environment]`` / ``[run]`` tables never contribute inputs;
+    ``[environment]`` (if present) is returned as an :class:`~abcmb.provenance.Environment`
+    so a replay can be drift-checked. Returns ``(options, params, environment_or_None)``.
+    """
+    with open(path, "rb") as handle:
+        data = tomllib.load(handle)
+
+    environment = None
+    if "environment" in data:
+        environment = provenance.Environment.from_flat(data["environment"])
+
+    if "params" in data or "options" in data:
+        return dict(data.get("options", {})), dict(data.get("params", {})), environment
+
+    flat = {}
+    for key, value in data.items():
+        if key in ("environment", "run"):
+            continue
+        if isinstance(value, dict):
+            flat.update(value)
+        else:
+            flat[key] = value
+    options, params = schema.route(flat)
+    return options, params, environment
+
+
+def model_from_config(path):
+    """
+    Build a Model from a TOML config (or a saved ``<out>_run.toml``) and return
+    ``(model, params)``, ready to call as ``model(params)``.
+
+    The file-driven counterpart to ``Model(**options)`` — the notebook mirror of the
+    ``abcmb --config`` CLI path. Load ``(options, params)`` yourself with
+    :func:`load_config` if you need the recorded environment for a drift check.
+    """
+    from .main import Model
+
+    options, params, _environment = load_config(path)
+    return Model(**options), params
+
+
+def dump_defaults() -> str:
+    """
+    Render every option and parameter with its schema default as a human-readable
+    TOML config, grouped into topical tables (by ``Spec.group``).
+
+    Keys route to options vs params by *name* on load, so the table placement is
+    cosmetic; each key is tagged ``(param)`` / ``(option)`` with its type and doc.
+    The conditional inputs with no fixed default (the neutrino one-of and the LINX
+    inputs) are omitted. The result is a valid ``--config`` — the starting point
+    printed by ``abcmb --dump-defaults``.
+    """
+    groups_order, group_rows = [], {}
+
+    def add(specs, tag):
+        for spec in specs:
+            group = str(spec.group)
+            if group not in group_rows:
+                group_rows[group] = []
+                groups_order.append(group)
+            group_rows[group].append((spec, tag))
+
+    add(schema.PARAM_SCHEMA, "param")
+    add(schema.OPTION_SCHEMA, "option")
+
+    lines = [
+        "# ABCMB default configuration -- every option and parameter with its schema default.",
+        "#",
+        "# Tables are topical (grouped by schema 'group'). On load (model_from_config or",
+        "# `abcmb --config`) keys route to options vs params by *name*, so a key's table",
+        "# is purely for human readability; each key is tagged (param) or (option) below.",
+        "#",
+        "# Omitted (no fixed default -- supplied only when needed, or computed at runtime):",
+        "#   neutrino one-of: Neff / N_nu_massless / T_nu_massless",
+        "#   LINX inputs:     Delta_Neff_init / tau_n_fac / nuclear_rates_q",
+        "#",
+        "# Usage:  abcmb --config defaults.toml -o out.npz",
+        "#         from abcmb.config import model_from_config",
+        "#         model, params = model_from_config('defaults.toml')",
+        "",
+    ]
+    for group in groups_order:
+        rows = [
+            (
+                spec.name,
+                provenance._toml_scalar(spec.default),
+                spec.doc,
+                tag,
+                spec.kind.__name__,
+            )
+            for spec, tag in group_rows[group]
+        ]
+        key_w = max(len(name) for name, *_ in rows)
+        val_w = max(len(val) for _, val, *_ in rows)
+        lines.append(f"[{group}]")
+        for name, val, doc, tag, kind in rows:
+            lines.append(f"{name:<{key_w}} = {val:<{val_w}}  # ({tag}, {kind}) {doc}")
+        lines.append("")
+    return "\n".join(lines).rstrip("\n") + "\n"
+
+
+def save_run(output, path, model, params, *, warnings=()):
+    """
+    Write the reproducible run artifact for a run of ``model`` on ``params``:
+    ``<stem>.npz`` (the spectra) and ``<stem>_run.toml`` (raw inputs + environment
+    stamp). Usable from a notebook or the CLI.
+
+    The ``_run.toml`` is itself a valid ``--config`` for replay. Returns the list of
+    paths written.
+
+    Parameters
+    ----------
+    output : Output
+        The result to save (its ``l``/``ClTT``/``ClTE``/``ClEE``/``k``/``Pk``).
+    path : str
+        Output path; a ``.npz`` suffix is added if missing.
+    model : Model
+        The model that produced ``output`` (read for ``options_provenance``).
+    params : dict
+        The raw parameters passed to the model call.
+    warnings : iterable[str], optional
+        Warning messages to record in the run file.
+    """
+    raw_options = {
+        key: prov.value
+        for key, prov in model.options_provenance.items()
+        if prov.source != schema.Source.DEFAULT
+    }
+    run_data = {
+        "environment": provenance.capture_environment(),
+        "options": raw_options,
+        "params": dict(params),
+        "warnings": list(warnings),
+    }
+
+    if not path.endswith(".npz"):
+        path += ".npz"
+    parent = os.path.dirname(path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+
+    run_path = path[:-4] + "_run.toml"
+    with open(run_path, "w") as handle:
+        provenance.write_run_toml(run_data, handle)
+
+    np.savez(
+        path,
+        l=np.asarray(output.l),
+        ClTT=np.asarray(output.ClTT),
+        ClTE=np.asarray(output.ClTE),
+        ClEE=np.asarray(output.ClEE),
+        k=np.asarray(output.k),
+        Pk=np.asarray(output.Pk),
+    )
+    return [path, run_path]
