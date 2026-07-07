@@ -16,7 +16,7 @@ import difflib
 import warnings
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
 import equinox as eqx
 import jax
@@ -26,6 +26,12 @@ from . import constants as cnst
 from .ABCMBTools import bilinear_interp
 from .linx import const as linxconst
 from .linx import thermo as linxThermo
+
+if TYPE_CHECKING:
+    # Compile-time only: _schema_types is a GENERATED type-checker artifact, so it
+    # is never imported at runtime -- the package (and the codegen that regenerates
+    # it) work even if the file is missing/stale. Annotations below quote the names.
+    from ._schema_types import Options, Params
 
 
 class Source(StrEnum):
@@ -626,10 +632,13 @@ def _check_option_consistency(options, strict=False):
         warnings.warn(msg, stacklevel=3)
 
 
-def resolve_options(input_options, strict=False) -> ResolveResult:
+def resolve_options(
+    input_options, strict=False
+) -> tuple["Options", dict[str, Provenance]]:
     """
     Resolve user configuration against ``OPTION_SCHEMA``, returning the populated
     options and per-key provenance. See :func:`_resolve` for the semantics.
+
     """
     options, provenance = _resolve(
         input_options,
@@ -639,7 +648,7 @@ def resolve_options(input_options, strict=False) -> ResolveResult:
         strict=strict,
     )
     _check_option_consistency(options, strict=strict)
-    return options, provenance
+    return cast("Options", options), provenance
 
 
 # ---------------------------------------------------------------------------
@@ -816,7 +825,7 @@ def param_key_set() -> set[str]:
     )
 
 
-def resolve_params(param_in, strict=False) -> ResolveResult:
+def resolve_params(param_in, strict=False) -> tuple["Params", dict[str, Provenance]]:
     """
     Resolve raw cosmological parameters against ``PARAM_SCHEMA``, returning the
     populated params and per-key provenance. See :func:`_resolve` for the
@@ -829,7 +838,7 @@ def resolve_params(param_in, strict=False) -> ResolveResult:
     """
     aliases = _alias_map(PARAM_SCHEMA)
     aliases.update(_MANAGED_PARAM_ALIASES)
-    return _resolve(
+    params, provenance = _resolve(
         param_in,
         PARAM_SCHEMA,
         aliases=aliases,
@@ -838,6 +847,7 @@ def resolve_params(param_in, strict=False) -> ResolveResult:
         noun="parameter",
         strict=strict,
     )
+    return cast("Params", params), provenance
 
 
 def _check_neutrino_input(params):

@@ -28,6 +28,18 @@ jobs:
       - name: Run pre-commit (lint + format)
         run: uvx pre-commit run --all-files --show-diff-on-failure
 
+      - name: Cache pyright's bundled Node
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pyright-python
+          key: pyright-node-${{ runner.os }}
+
+      # Type errors gate the build. jax/equinox stub-noise rules are suppressed in
+      # [tool.pyright]; the high-signal rules (TypedDict keys, attribute access,
+      # invalid type forms) catch real typos.
+      - name: Type check (pyright)
+        run: uv run --extra dev pyright
+
   build:
     runs-on: ubuntu-latest
     env:

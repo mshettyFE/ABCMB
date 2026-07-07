@@ -47,6 +47,7 @@ test = [
 dev = [
     "ruff==0.15.20",
     "pre-commit",
+    "pyright==1.1.411",
 ]
 
 [project.urls]
@@ -83,7 +84,12 @@ target-version = "py311"
 # linx/ and hyrex/ are vendored companion codes (LINX, HyRex); leave them to
 # their upstreams rather than reformatting/linting to ABCMB's rules.
 # example_notebooks/ are pedagogical; don't reformat teaching material.
-extend-exclude = ["abcmb/linx", "abcmb/hyrex", "example_notebooks"]
+extend-exclude = [
+    "abcmb/linx",
+    "abcmb/hyrex",
+    "example_notebooks",
+    "abcmb/_schema_types.py",  # generated from the schema 
+]
 
 [tool.ruff.lint]
 # Ruff defaults (pyflakes F + pycodestyle E4/E7/E9) plus import sorting (I).
@@ -96,3 +102,28 @@ ignore = ["E741"]
 # Sphinx conf.py must manipulate sys.path before importing the package for
 # autodoc, so module-level imports legitimately follow other statements.
 "docs/conf.py" = ["E402"]
+
+[tool.pyright]
+# Type-check ABCMB's own code; vendored companion codes (LINX, HyRex) and
+# pedagogical notebooks follow their upstreams (mirrors the ruff excludes).
+include = ["abcmb"]
+exclude = ["abcmb/linx", "abcmb/hyrex", "example_notebooks", "**/__pycache__"]
+pythonVersion = "3.11"
+# `basic` catches real errors (undefined names, TypedDict key typos, bad calls)
+# without the strict-mode "unknown type" flood on an un-annotated JAX codebase.
+typeCheckingMode = "basic"
+# jax/diffrax/hyrex ship no stubs -- don't let that drown the signal.
+reportMissingTypeStubs = false
+reportMissingModuleSource = false
+# jax/equinox ship loose type info; these rules are dominated by false positives on
+# the numerics -- Array | tuple[Array,...] unions (operator/argument/index/optional),
+# filter_jit's backend passthrough kwarg (call), and jax.checkpoint's export gap.
+# The high-signal rules (reportGeneralTypeIssues / reportAttributeAccessIssue /
+# reportInvalidTypeForm) stay on to catch real typos.
+reportOperatorIssue = "none"
+reportArgumentType = "none"
+reportOptionalSubscript = "none"
+reportOptionalMemberAccess = "none"
+reportIndexIssue = "none"
+reportCallIssue = "none"
+reportPrivateImportUsage = "none"

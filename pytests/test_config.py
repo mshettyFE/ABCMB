@@ -81,6 +81,24 @@ def test_dump_defaults_roundtrips(tmp_path, capsys):
     assert env is None
 
 
+def test_generated_artifacts_are_fresh():
+    # defaults.toml and abcmb/_schema_types.py are generated from the schema and
+    # committed. This verifies they're up to date (CI/check.sh only *verify*;
+    # regenerate with `./check.sh fix` or `abcmb --dump-{defaults,types}`).
+    from pathlib import Path
+
+    from abcmb._codegen import dump_types
+    from abcmb.config import dump_defaults
+
+    root = Path(__file__).parents[1]
+    assert dump_defaults() == (root / "defaults.toml").read_text(), (
+        "defaults.toml is stale -- run ./check.sh fix"
+    )
+    assert dump_types() == (root / "abcmb" / "_schema_types.py").read_text(), (
+        "abcmb/_schema_types.py is stale -- run ./check.sh fix"
+    )
+
+
 def test_public_config_api(tmp_path):
     # The notebook-facing front door lives in abcmb.config (a plain module, so
     # `import abcmb` stays jax-free until you reach for the file I/O).

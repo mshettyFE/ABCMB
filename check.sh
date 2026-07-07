@@ -36,12 +36,19 @@ case "${1:-}" in
         $RUFF format .
         echo ">> ruff check --fix (applying)"
         $RUFF check --fix .
+        echo ">> regenerate schema artifacts (defaults.toml, _schema_types.py)"
+        uv run python -m abcmb._codegen
         ;;
     "")
         echo ">> ruff check"
         $RUFF check .
         echo ">> ruff format --check"
         $RUFF format --check .
+        echo ">> pyright (type check)"
+        # Gating. jax/equinox stub-noise rules are suppressed in [tool.pyright];
+        # the high-signal rules (TypedDict keys, attribute access, invalid type
+        # forms) catch real typos in options/params/field access.
+        uv run --extra dev pyright
         ;;
     *)
         echo "error: unknown command '$1'" >&2

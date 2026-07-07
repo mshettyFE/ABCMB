@@ -1,4 +1,5 @@
 import os
+from typing import TYPE_CHECKING
 
 import diffrax
 import equinox as eqx
@@ -20,6 +21,10 @@ from .linx.abundances import AbundanceModel
 from .linx.background import BackgroundModel
 from .linx.nuclear import NuclearRates
 from .species import Fluid
+
+if TYPE_CHECKING:
+    # Compile-time only (generated type-checker artifact); annotations quote the names.
+    from ._schema_types import Options, Params
 
 file_dir = os.path.dirname(__file__)
 
@@ -58,7 +63,7 @@ class Model(eqx.Module):
         A LINX abundance model used for computing the helium-4 mass fraction
         given the user's input baryon density, Neff, neutron lifetime, and
         nuclear reaction rates.
-    adjoint : diffrax.adjoint
+    adjoint : type[diffrax.AbstractAdjoint]
         Adjoint mode for diffrax solves.  Default is ForwardMode.
 
     Methods:
@@ -72,17 +77,17 @@ class Model(eqx.Module):
     PE: perturbations.PerturbationEvolver
     SS: spectrum.SpectrumSolver
     RecModel: hyrex.recomb_model
-    options: dict
+    options: "Options"
     options_provenance: dict
 
-    species_list: tuple[Fluid, ...] = ()
+    species_list: tuple[Fluid, ...]
     species_dict: dict
 
     PArthENoPE_CLASS_table: Array
-    thermo_model_DNeff: BackgroundModel
-    abundanceModel: AbundanceModel
+    thermo_model_DNeff: BackgroundModel | None
+    abundanceModel: AbundanceModel | None
 
-    adjoint: "diffrax.adjoint" = eqx.field(static=True)
+    adjoint: type[diffrax.AbstractAdjoint] = eqx.field(static=True)
 
     ### ADDING SPECIES: add has_ parameter and add condition to append to tuple.
     # In the init, all species that are present within the model should be set to True.
@@ -387,7 +392,7 @@ class Model(eqx.Module):
         """
         return schema.resolve_params(param_in)[1]
 
-    def add_derived_parameters(self, param_in: dict) -> dict:
+    def add_derived_parameters(self, param_in: dict) -> "Params":
         # Resolve raw params against PARAM_SCHEMA (defaults, aliases, unknown-key
         # handling), then run the imperative cosmology derivation.
         params, _ = schema.resolve_params(param_in)
@@ -407,17 +412,17 @@ class Output(eqx.Module):
 
     Attributes:
     -----------
-    ClTT : jnp.array
+    ClTT : Array
         Temperature-temperature power spectrum
-    ClTE : jnp.array
+    ClTE : Array
         Temperature-polarization power spectrum
-    ClEE : jnp.array
+    ClEE : Array
         Polarization-polarization power spectrum
-    Pk : jnp.array
+    Pk : Array
         Matter power spectrum
-    l : jnp.array
+    l : Array
         Multipoles l at which ClTT/ClTE/ClEE are output
-    k : jnp.array
+    k : Array
         Wavenumbers k at with Pk is output
     BG  : background.Background
         Background object containing functions like Hubble, recombination history, etc
@@ -428,13 +433,13 @@ class Output(eqx.Module):
     """
 
     # Power spectra
-    ClTT: jnp.array
-    ClTE: jnp.array
-    ClEE: jnp.array
-    Pk: jnp.array
+    ClTT: Array
+    ClTE: Array
+    ClEE: Array
+    Pk: Array
 
-    l: jnp.array
-    k: jnp.array
+    l: Array
+    k: Array
     BG: background.Background
     PT: perturbations.PerturbationTable
     params: dict
