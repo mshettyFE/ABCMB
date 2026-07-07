@@ -842,7 +842,7 @@ class MassiveNeutrino(Fluid):
     rho_plus_P_sigma : Compute shear perturbation (units: eV cm^{-3})
     """
 
-    num_ells_per_bin: int = eqx.field(static=True)
+    num_ells_per_bin: int = eqx.field(default=0, static=True)
 
     q_3p = jnp.array([0.913201, 3.37517, 7.79184])
     w_3p = jnp.array([0.0687359, 3.31435, 2.29911])
@@ -1508,8 +1508,8 @@ class Photon(StandardFluid):
     y_prime : Compute perturbation time derivatives
     """
 
-    num_F_ell_modes: int = eqx.field(static=True)
-    num_G_ell_modes: int = eqx.field(static=True)
+    num_F_ell_modes: int = eqx.field(default=0, static=True)
+    num_G_ell_modes: int = eqx.field(default=0, static=True)
     name = "Photon"
 
     def __init__(self, first_idx, options):

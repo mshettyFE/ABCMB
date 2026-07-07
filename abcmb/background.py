@@ -1,4 +1,5 @@
 import os
+from typing import cast
 
 import diffrax
 import equinox as eqx
@@ -14,6 +15,7 @@ from diffrax import (
     diffeqsolve,
 )
 from jax import config, lax, vmap
+from jaxtyping import Array
 
 from . import ABCMBTools as tools
 from . import constants as cnst
@@ -37,16 +39,16 @@ class BackgroundPreRecomb(eqx.Module):
     -----------
     species_list : tuple
         A list of all fluids in the cosmology
-    lna_tau_tab : jnp.array
+    lna_tau_tab : Array
         Log scale factor axis used to tabulate conformal time
-    tau_tab : jnp.array
+    tau_tab : Array
         Tabulated conformal time.
     tau0 : float
         Conformal time today in Mpc.
     recomb_inputs : RecombInputs
         Bundle of background quantities (TCMB, nH, H) sampled on
         ``RecModel.lna_axis_full``; consumed by HyRex.
-    adjoint : diffrax.adjoint
+    adjoint : type[diffrax.AbstractAdjoint]
         Adjoint mode for diffrax solves (static field).
 
     Methods:
@@ -66,14 +68,20 @@ class BackgroundPreRecomb(eqx.Module):
     species_list: tuple[Fluid, ...]
 
     lna_tau_tab = jnp.linspace(-33.0, 0.0, 10000)  # Axis for tabulating conformal time.
-    tau_tab: jnp.array  # Tabulated conformal time.
-    tau0: float  # Conformal time today
+    tau_tab: Array  # Tabulated conformal time.
+    tau0: Array  # Conformal time today
 
     recomb_inputs: "RecombInputs"
 
-    adjoint: "diffrax.adjoint" = eqx.field(static=True)
+    adjoint: type[diffrax.AbstractAdjoint] = eqx.field(static=True)
 
-    def __init__(self, params, species_list, RecModel, adjoint=ForwardMode):
+    def __init__(
+        self,
+        params,
+        species_list,
+        RecModel,
+        adjoint: type[diffrax.AbstractAdjoint] = ForwardMode,
+    ):
         """
         Initialize pre-recombination background.
 
@@ -88,7 +96,7 @@ class BackgroundPreRecomb(eqx.Module):
             List of fluid species for energy density calculations
         RecModel : hyrex.recomb_model
             Recombination module for computing xe and Tm histories
-        adjoint : diffrax.adjoint, optional
+        adjoint : type[diffrax.AbstractAdjoint], optional
             Adjoint class for diffrax solves (default: ForwardMode)
         """
         self.adjoint = adjoint
@@ -469,16 +477,16 @@ class Background(BackgroundPreRecomb):
     -----------
     species_list : tuple
         A list of all fluids in the cosmology
-    lna_tau_tab : jnp.array
+    lna_tau_tab : Array
         Log scale factor axis used to tabulate conformal time
-    tau_tab : jnp.array
+    tau_tab : Array
         Tabulated conformal time.
     tau0 : float
         Conformal time today in Mpc.
     recomb_inputs : RecombInputs
         Bundle of background quantities (TCMB, nH, H) sampled on
         ``RecModel.lna_axis_full``; consumed by HyRex.
-    adjoint : diffrax.adjoint
+    adjoint : type[diffrax.AbstractAdjoint]
         Adjoint mode for diffrax solves (static field).
     xe_tab : array_with_padding
         Tabulated free electron fraction xe with reionization correction.
@@ -526,15 +534,15 @@ class Background(BackgroundPreRecomb):
     lna_xe_tab: "array_with_padding"
     Tm_tab: "array_with_padding"
     lna_Tm_tab: "array_with_padding"
-    kappa_func: "diffrax.solution"
+    kappa_func: "diffrax.Solution"
     z_reion: float
     tau_reion: float
-    lna_rec: float
-    rA_rec: float  # Comoving angular diameter distance at recombination.
+    lna_rec: Array
+    rA_rec: Array  # Comoving angular diameter distance at recombination.
 
     # Transfer related
-    lna_transfer_start: float  # Time where transfer functions start integrating.
-    lna_visibility_stop: float  # Time to stop integrating T1, T2, and E sources due to small visibility functions. Only used for l<400
+    lna_transfer_start: Array  # Time where transfer functions start integrating.
+    lna_visibility_stop: Array  # Time to stop integrating T1, T2, and E sources due to small visibility functions. Only used for l<400
 
     def __init__(self, pre_BG, recomb_output, params, ReionModel):
         """
@@ -1033,8 +1041,8 @@ class ReionizationModel(eqx.Module):
 
     """
 
-    z_reion: jnp.float64
-    tau_reion: jnp.float64
+    z_reion: Array
+    tau_reion: Array
 
     def xe_reion(self, lna, z_reion, params):
         """
@@ -1104,5 +1112,5 @@ class ReionizationModelFromTau(ReionizationModel):
         sol = optx.root_find(
             tau_target_fn, solver, 7.6, params.get("tau_reion", jnp.array(0.05430842))
         )
-        self.z_reion = sol.value
+        self.z_reion = cast(Array, sol.value)
         self.tau_reion = params.get("tau_reion", jnp.array(0.05430842))

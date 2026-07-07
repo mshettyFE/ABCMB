@@ -6,6 +6,7 @@ import jax.numpy as jnp
 import numpy as np
 from interpax import CubicSpline
 from jax import config, grad, lax, vmap
+from jaxtyping import Array
 
 from . import ABCMBTools as tools
 
@@ -129,23 +130,23 @@ class SpectrumSolver(eqx.Module):
 
     Attributes:
     -----------
-    ells : jnp.array
+    ells : Array
         Multipole values for output power spectra
-    ells_indices : jnp.array
+    ells_indices : Array
         Indices into bessel_l_tab corresponding to ells
-    lensing_ells : jnp.array
+    lensing_ells : Array
         Extended multipole range for lensing calculations
-    lensing_ells_indices : jnp.array
+    lensing_ells_indices : Array
         Indices into bessel_l_tab for lensing multipoles
-    lensing_mus : jnp.array
+    lensing_mus : Array
         Used for lensing, the Gauss-Legendre quadrature roots for the correlation function -> Cl integral.
-    lensing_ws : jnp.array
+    lensing_ws : Array
         Used for lensing, the Gauss-Legendre quadrature weights for the correlation function -> Cl integral.
     lensing : bool
         Whether to include gravitational lensing effects
-    k_axis_transfer : jnp.array
+    k_axis_transfer : Array
         Wavenumber grid for transfer function integration (units: Mpc^{-1})
-    k_axis_Pk_output : jnp.array
+    k_axis_Pk_output : Array
         Wavenumber grid for matter power spectrum output (units: Mpc^{-1})
     k_pivot : float
         Pivot scale for primordial power spectrum normalization (units: Mpc^{-1}, default: 0.05)
@@ -170,18 +171,18 @@ class SpectrumSolver(eqx.Module):
     integrand_E : Compute E-mode polarization source integrand
     """
 
-    ells: jnp.array
-    ells_indices: jnp.array
+    ells: Array
+    ells_indices: Array
 
-    lensing_ells: jnp.array
-    lensing_ells_indices: jnp.array
-    lensing_mus: jnp.array
-    lensing_ws: jnp.array
+    lensing_ells: Array
+    lensing_ells_indices: Array
+    lensing_mus: Array
+    lensing_ws: Array
 
     lensing: bool
 
-    k_axis_transfer: jnp.array
-    k_axis_Pk_output: jnp.array
+    k_axis_transfer: Array
+    k_axis_Pk_output: Array
 
     k_pivot: float = 0.05  # In 1/Mpc
     scale_sw: float = 1.0

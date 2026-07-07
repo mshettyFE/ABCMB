@@ -5,6 +5,7 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 from jax import lax, vmap
+from jaxtyping import Array
 
 from . import constants as cnst
 from .species import Fluid
@@ -34,11 +35,11 @@ class PerturbationEvolver(eqx.Module):
     species_dict : dict
         A dictionary containing the names of all fluids, in the same order as
         they appear in species_list.
-    k_axis_perturbations : jnp.array
+    k_axis_perturbations : Array
         A list of wavenumbers k at which to compute perturbations
     options : dict
         A dictionary containing run options
-    adjoint : diffrax.adjoint
+    adjoint : type[diffrax.AbstractAdjoint]
         Adjoint mode for diffrax solves.  Default is ForwardMode.
 
     Methods:
@@ -53,10 +54,10 @@ class PerturbationEvolver(eqx.Module):
 
     species_list: tuple[Fluid, ...]
     species_dict: dict
-    k_axis_perturbations: jnp.array
+    k_axis_perturbations: Array
     options: dict
 
-    adjoint: "diffrax.adjoint" = eqx.field(static=True)
+    adjoint: type[diffrax.AbstractAdjoint] = eqx.field(static=True)
 
     def __init__(
         self,
@@ -64,7 +65,7 @@ class PerturbationEvolver(eqx.Module):
         species_dict,
         k_axis_perturbations=jnp.geomspace(1.0e-4, 0.4, 600),
         options={},
-        adjoint=diffrax.ForwardMode,
+        adjoint: type[diffrax.AbstractAdjoint] = diffrax.ForwardMode,
     ):
         self.species_list = species_list
         self.species_dict = species_dict
@@ -81,7 +82,7 @@ class PerturbationEvolver(eqx.Module):
 
         Parameters:
         -----------
-        k    : jnp.array
+        k    : Array
             1D axis of wavenumbers k. Perturbations are computed and stored at these values.
         args : tuple
             Background cosmology and cosmological parameters (BG, params)
@@ -531,15 +532,15 @@ class PerturbationTable(eqx.Module):
         Species with no perturbations (e.g. dark energy) map to {}.
     """
 
-    k: jnp.array
-    lna: jnp.array
-    delta_m: jnp.array
-    theta_b_prime: jnp.array
+    k: Array
+    lna: Array
+    delta_m: Array
+    theta_b_prime: Array
 
-    metric_eta: jnp.array
-    metric_h_prime: jnp.array
-    metric_eta_prime: jnp.array
-    metric_alpha: jnp.array
-    metric_alpha_prime: jnp.array
+    metric_eta: Array
+    metric_h_prime: Array
+    metric_eta_prime: Array
+    metric_alpha: Array
+    metric_alpha_prime: Array
 
     species_perturbations: dict

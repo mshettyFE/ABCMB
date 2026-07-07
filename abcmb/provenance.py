@@ -113,7 +113,7 @@ def capture_environment():
     except Exception:
         device = None
     try:
-        x64 = bool(jax.config.jax_enable_x64)
+        x64 = bool(jax.config.read("jax_enable_x64"))
     except Exception:
         x64 = None
     git = _git_info()  # {"commit", "dirty"} or None outside a git checkout
