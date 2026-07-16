@@ -136,7 +136,7 @@ def test_check_value_kind():
 def test_neutrino_one_of_invariant():
     # The 1-to-1 rule (was print + sys.exit) is a param-only helper called up front
     # by derive_parameters, so it is testable with no Model construction.
-    from abcmb.schema import _check_neutrino_input
+    from abcmb.derived import _check_neutrino_input
 
     _check_neutrino_input({"Neff": 3.044})  # one alone is fine
     _check_neutrino_input({"N_nu_massless": 2.0})  # the other alone is fine
@@ -146,7 +146,7 @@ def test_neutrino_one_of_invariant():
 
 def test_linx_conflict_raises():
     # Supplying a neutrino input under LINX (which computes it) is rejected up front.
-    from abcmb.schema import _resolve_neutrino_input
+    from abcmb.derived import _resolve_neutrino_input
 
     with pytest.raises(ValueError, match="LINX"):
         _resolve_neutrino_input({"Neff": 3.044}, {"bbn_type": "linx"})
@@ -171,7 +171,7 @@ def test_derived_density_guards():
     # The derived-cosmology guards fail fast (clear error, not a NaN spectrum).
     import jax.numpy as jnp
 
-    from abcmb.schema import _derive_densities
+    from abcmb.derived import _derive_densities
 
     base = {"h": jnp.asarray(0.68), "omega_b": jnp.asarray(0.02), "omega_Lambda": 0.0}
 
@@ -210,7 +210,7 @@ def test_n_massless_from_neff_guard():
     # Too-small Neff for the other relativistic species -> negative count.
     import jax.numpy as jnp
 
-    from abcmb.schema import _n_massless_from_neff
+    from abcmb.derived import _n_massless_from_neff
 
     with pytest.raises(ValueError, match="negative massless-neutrino"):
         _n_massless_from_neff(

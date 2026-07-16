@@ -9,7 +9,7 @@ import numpy as np
 from jax import config, lax
 from jaxtyping import Array
 
-from . import background, model_setup, perturbations, schema, spectrum
+from . import background, derived, model_setup, perturbations, schema, spectrum
 from .background import (
     Background,
     BackgroundPreRecomb,
@@ -396,7 +396,7 @@ class Model(eqx.Module):
         # Resolve raw params against PARAM_SCHEMA (defaults, aliases, unknown-key
         # handling), then run the imperative cosmology derivation.
         params, _ = schema.resolve_params(param_in)
-        return schema.derive_parameters(
+        return derived.derive_parameters(
             params,
             self.options,
             self.species_list,
