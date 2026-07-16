@@ -22,7 +22,7 @@ def test_environment_degrades_outside_git_repo(tmp_path):
 
 
 def test_run_toml_omits_none_git(tmp_path):
-    import tomllib
+    import tomlkit
 
     # An Environment with no git info (git_* default to None) -> "not a checkout".
     env = provenance.Environment(abcmb_version="0.0.0", python="3.x")
@@ -30,15 +30,15 @@ def test_run_toml_omits_none_git(tmp_path):
         provenance.write_run_toml(
             {"environment": env, "options": {}, "params": {}, "warnings": []}, handle
         )
-    with open(tmp_path / "r.toml", "rb") as handle:
-        data = tomllib.load(handle)
+    with open(tmp_path / "r.toml", encoding="utf-8") as handle:
+        data = tomlkit.load(handle).unwrap()
     # No null in TOML -> git_commit/git_dirty simply omitted, and reconstruct to None.
     assert "git_commit" not in data["environment"]
     assert provenance.Environment.from_flat(data["environment"]).git_commit is None
 
 
 def test_run_toml_roundtrip_and_config_compatible(tmp_path):
-    import tomllib
+    import tomlkit
 
     run_data = {
         "environment": provenance.capture_environment(),
@@ -51,8 +51,8 @@ def test_run_toml_roundtrip_and_config_compatible(tmp_path):
         provenance.write_run_toml(run_data, handle)
 
     # Valid TOML that round-trips.
-    with open(path, "rb") as handle:
-        data = tomllib.load(handle)
+    with open(path, encoding="utf-8") as handle:
+        data = tomlkit.load(handle).unwrap()
     assert data["params"]["omega_cdm"] == 0.12
     assert data["options"]["lensing"] is False
     assert "l_max_ur" in data["run"]["warnings"][0]
@@ -69,10 +69,10 @@ def test_run_toml_roundtrip_and_config_compatible(tmp_path):
 def test_save_run_artifact(tmp_path):
     # save_run is the shared (notebook + CLI) reproducibility entry point. Exercise
     # it with lightweight stand-ins for Output/Model (no solver, no compile).
-    import tomllib
     import types
 
     import numpy as np
+    import tomlkit
 
     from abcmb.schema import Provenance, Source
 
@@ -93,8 +93,8 @@ def test_save_run_artifact(tmp_path):
     paths = config.save_run(output, str(tmp_path / "run"), model, {"omega_cdm": 0.12})
     assert paths == [str(tmp_path / "run.npz"), str(tmp_path / "run_run.toml")]
 
-    with open(tmp_path / "run_run.toml", "rb") as handle:
-        data = tomllib.load(handle)
+    with open(tmp_path / "run_run.toml", encoding="utf-8") as handle:
+        data = tomlkit.load(handle).unwrap()
     assert data["options"] == {"l_max": 200}  # user-set only; default omitted
     assert data["params"] == {"omega_cdm": 0.12}
     assert data["environment"]["abcmb_version"]  # a fresh stamp is present

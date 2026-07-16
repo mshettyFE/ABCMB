@@ -20,6 +20,7 @@ from dataclasses import asdict, dataclass, fields
 
 import jax
 import numpy as np
+import tomlkit
 
 from . import version
 
@@ -45,10 +46,23 @@ def _git_info(cwd=None):
         )
 
     try:
+        # 1. Fetch current commit
         head = _run(["rev-parse", "HEAD"])
         if head.returncode != 0:
             return None
-        status = _run(["status", "--porcelain"])
+
+        # 2. Check status ignoring untracked files (-uno)
+        # Proactively including submodules explicitly
+        status = _run(["status", "--porcelain", "-uno", "--ignore-submodules=none"])
+        if status.returncode != 0:
+            # If status failed mechanically, we cannot guarantee it is clean.
+            # We return the commit hash but mark dirty as True
+            return {
+                "commit": head.stdout.strip(),
+                "dirty": True,
+                "status_error": status.stderr.strip(),
+            }
+
         return {
             "commit": head.stdout.strip(),
             "dirty": bool(status.stdout.strip()),
@@ -129,36 +143,16 @@ def capture_environment():
     )
 
 
-def _toml_scalar(value):
-    """Render a scalar (or list of scalars) as a TOML value."""
-    if isinstance(value, bool):
-        return "true" if value else "false"
-    if isinstance(value, int):
-        return str(value)
-    if isinstance(value, float):
-        return repr(value)
-    if isinstance(value, str):
-        escaped = (
-            value.replace("\\", "\\\\")
-            .replace('"', '\\"')
-            .replace("\n", "\\n")
-            .replace("\t", "\\t")
-        )
-        return f'"{escaped}"'
-    if isinstance(value, (list, tuple)):
-        return "[" + ", ".join(_toml_scalar(v) for v in value) + "]"
-    raise TypeError(f"cannot serialize {type(value).__name__} to TOML")
-
-
-def _write_toml_table(name, table, handle):
-    """Write one flat ``[name]`` table, skipping ``None`` values (TOML has no null)."""
-    handle.write(f"[{name}]\n")
-    for key, value in table.items():
+def _toml_table(mapping):
+    """A flat tomlkit table from ``mapping``, coercing jnp/np values and dropping
+    ``None`` (TOML has no null -> an absent key reconstructs to ``None``)."""
+    tbl = tomlkit.table()
+    for key, value in mapping.items():
         value = _to_py(value)
         if value is None:
             continue
-        handle.write(f"{key} = {_toml_scalar(value)}\n")
-    handle.write("\n")
+        tbl[key] = value
+    return tbl
 
 
 def write_run_toml(run_data, handle):
@@ -173,19 +167,26 @@ def write_run_toml(run_data, handle):
         "warnings": list[str]}``.
     handle : text-mode file object
     """
-    handle.write("# ABCMB run file. Reproduce with: abcmb --config <this file>\n")
-    handle.write("# The [params]/[options] tables below are also a valid --config.\n\n")
-    _write_toml_table("environment", run_data["environment"].to_flat(), handle)
-    _write_toml_table("params", run_data.get("params", {}), handle)
-    _write_toml_table("options", run_data.get("options", {}), handle)
-    _write_toml_table(
-        "run",
+    doc = tomlkit.document()
+    doc.add(
+        tomlkit.comment("ABCMB run file. Reproduce with: abcmb --config <this file>")
+    )
+    doc.add(
+        tomlkit.comment(
+            "The [params]/[options] tables below are also a valid --config."
+        )
+    )
+    doc.add(tomlkit.nl())
+    doc["environment"] = _toml_table(run_data["environment"].to_flat())
+    doc["params"] = _toml_table(run_data.get("params", {}))
+    doc["options"] = _toml_table(run_data.get("options", {}))
+    doc["run"] = _toml_table(
         {
             "manifest_version": MANIFEST_VERSION,
             "warnings": list(run_data.get("warnings", [])),
-        },
-        handle,
+        }
     )
+    handle.write(tomlkit.dumps(doc))
 
 
 def check_drift(recorded):

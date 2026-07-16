@@ -13,24 +13,24 @@
 #         model, params = model_from_config('defaults.toml')
 
 [cosmology]
-h         = 0.6736          # (param, float) Dimensionless Hubble parameter H0/100.
-omega_cdm = 0.12            # (param, float) Physical CDM density Omega_cdm h^2.
-omega_b   = 0.02237         # (param, float) Physical baryon density Omega_b h^2.
-TCMB0     = 0.000234865418  # (param, float) CMB temperature today, in eV.
-YHe       = 0.245           # (param, float) Primordial helium mass fraction (overwritten when bbn_type computes it).
+h = 0.6736              # (param, float) Dimensionless Hubble parameter H0/100.
+omega_cdm = 0.12        # (param, float) Physical CDM density Omega_cdm h^2.
+omega_b = 0.02237       # (param, float) Physical baryon density Omega_b h^2.
+TCMB0 = 0.000234865418  # (param, float) CMB temperature today, in eV.
+YHe = 0.245             # (param, float) Primordial helium mass fraction (overwritten when bbn_type computes it).
 
 [primordial]
-A_s     = 2.1e-09  # (param, float) Scalar amplitude at the pivot scale.
-n_s     = 0.9649   # (param, float) Scalar spectral index.
-k_pivot = 0.05     # (option, float) Primordial pivot scale (Mpc^-1).
+A_s = 2.1e-09   # (param, float) Scalar amplitude at the pivot scale.
+n_s = 0.9649    # (param, float) Scalar spectral index.
+k_pivot = 0.05  # (option, float) Primordial pivot scale (Mpc^-1).
 
 [reionization]
-Delta_z_reion    = 0.5     # (param, float) Reionization width in redshift.
-z_reion_He       = 3.5     # (param, float) Helium reionization redshift.
-Delta_z_reion_He = 0.5     # (param, float) Helium reionization width.
-exp_reion        = 1.5     # (param, float) Reionization exponent.
-tau_reion        = 0.0544  # (param, float) Reionization optical depth (used when input_tau_reion is True).
-z_reion          = 7.67    # (param, float) Reionization redshift (used when input_tau_reion is False).
+Delta_z_reion = 0.5     # (param, float) Reionization width in redshift.
+z_reion_He = 3.5        # (param, float) Helium reionization redshift.
+Delta_z_reion_He = 0.5  # (param, float) Helium reionization width.
+exp_reion = 1.5         # (param, float) Reionization exponent.
+tau_reion = 0.0544      # (param, float) Reionization optical depth (used when input_tau_reion is True).
+z_reion = 7.67          # (param, float) Reionization redshift (used when input_tau_reion is False).
 
 [neutrinos]
 T_nu_massive = 0.71611  # (param, float) Massive-neutrino temperature (ratio to TCMB).
@@ -44,54 +44,54 @@ use_LCDM_species = true  # (option, bool) Include the default LCDM species set.
 input_tau_reion = true  # (option, bool) Reionization input mode: tau_reion (True) vs z_reion (False).
 
 [output]
-l_min   = 2      # (option, int) Minimum multipole for output spectra.
-l_max   = 2500   # (option, int) Maximum multipole for output spectra.
+l_min = 2        # (option, int) Minimum multipole for output spectra.
+l_max = 2500     # (option, int) Maximum multipole for output spectra.
 lensing = false  # (option, bool) Compute lensed spectra.
-k_max   = 0.5    # (option, float) Maximum wavenumber for the matter power spectrum (Mpc^-1).
+k_max = 0.5      # (option, float) Maximum wavenumber for the matter power spectrum (Mpc^-1).
 
 [bbn]
-bbn_type          = ""                 # (option, str) BBN backend: '' / 'Table' (sBBN table) or 'linx' (LINX).
+bbn_type = ""                          # (option, str) BBN backend: '' / 'Table' (sBBN table) or 'linx' (LINX).
 linx_reaction_net = "key_PRIMAT_2023"  # (option, str) LINX nuclear reaction network.
 
 [hierarchy]
-l_max_g           = 12  # (option, int) Photon temperature hierarchy cutoff.
-l_max_pol_g       = 10  # (option, int) Photon polarization hierarchy cutoff.
+l_max_g = 12            # (option, int) Photon temperature hierarchy cutoff.
+l_max_pol_g = 10        # (option, int) Photon polarization hierarchy cutoff.
 l_max_massless_nu = 17  # (option, int) Massless-neutrino hierarchy cutoff.
-l_max_massive_nu  = 17  # (option, int) Massive-neutrino hierarchy cutoff.
+l_max_massive_nu = 17   # (option, int) Massive-neutrino hierarchy cutoff.
 
 [k_grid]
-k_step_sub             = 0.05         # (option, float) Perturbation k-grid step, sub-horizon.
-k_step_super           = 0.002        # (option, float) Perturbation k-grid step, super-horizon.
-k_step_transition      = 0.2          # (option, float) Perturbation k-grid transition step.
-k_step_super_reduction = 0.1          # (option, float) Super-horizon step reduction factor.
-k_min_tau0             = 0.1          # (option, float) Minimum k*tau0 for the perturbation grid.
-k_max_tau0_over_l_max  = 1.8          # (option, float) Max k*tau0 / l_max for the perturbation grid.
-H0_fid                 = 0.000225556  # (option, float) Fiducial H0 for k-grid scaling.
-tau0_fid               = 14186.68     # (option, float) Fiducial conformal time today for k-grid scaling.
-rs_rec_fid             = 144.6279     # (option, float) Fiducial sound horizon at recombination.
+k_step_sub = 0.05             # (option, float) Perturbation k-grid step, sub-horizon.
+k_step_super = 0.002          # (option, float) Perturbation k-grid step, super-horizon.
+k_step_transition = 0.2       # (option, float) Perturbation k-grid transition step.
+k_step_super_reduction = 0.1  # (option, float) Super-horizon step reduction factor.
+k_min_tau0 = 0.1              # (option, float) Minimum k*tau0 for the perturbation grid.
+k_max_tau0_over_l_max = 1.8   # (option, float) Max k*tau0 / l_max for the perturbation grid.
+H0_fid = 0.000225556          # (option, float) Fiducial H0 for k-grid scaling.
+tau0_fid = 14186.68           # (option, float) Fiducial conformal time today for k-grid scaling.
+rs_rec_fid = 144.6279         # (option, float) Fiducial sound horizon at recombination.
 
 [transfer]
-k_transfer_linstep = 0.45        # (option, float) Transfer-integration k-grid linear step.
-k_transfer_logstep = 170.0       # (option, float) Transfer-integration k-grid log step.
-tau_rec_fid        = 281.040565  # (option, float) Fiducial conformal time at recombination.
+k_transfer_linstep = 0.45   # (option, float) Transfer-integration k-grid linear step.
+k_transfer_logstep = 170.0  # (option, float) Transfer-integration k-grid log step.
+tau_rec_fid = 281.040565    # (option, float) Fiducial conformal time at recombination.
 
 [ic]
-R_tc    = 0.0015  # (option, float) Tight-coupling threshold for IC start time.
-R_large = 0.07    # (option, float) Large-scale threshold for IC start time.
+R_tc = 0.0015   # (option, float) Tight-coupling threshold for IC start time.
+R_large = 0.07  # (option, float) Large-scale threshold for IC start time.
 
 [solver]
-max_steps_PE    = 2048    # (option, int) Max diffrax steps for the perturbation evolver.
-k_split_PE      = 0.01    # (option, float) k threshold splitting solver tolerances.
+max_steps_PE = 2048       # (option, int) Max diffrax steps for the perturbation evolver.
+k_split_PE = 0.01         # (option, float) k threshold splitting solver tolerances.
 rtol_small_k_PE = 1e-05   # (option, float) Relative tolerance, small k.
 rtol_large_k_PE = 0.0001  # (option, float) Relative tolerance, large k.
 atol_small_k_PE = 1e-10   # (option, float) Absolute tolerance, small k.
 atol_large_k_PE = 1e-06   # (option, float) Absolute tolerance, large k.
-pcoeff_PE       = 0.25    # (option, float) PID controller P coefficient.
-icoeff_PE       = 0.8     # (option, float) PID controller I coefficient.
-dcoeff_PE       = 0.0     # (option, float) PID controller D coefficient.
+pcoeff_PE = 0.25          # (option, float) PID controller P coefficient.
+icoeff_PE = 0.8           # (option, float) PID controller I coefficient.
+dcoeff_PE = 0.0           # (option, float) PID controller D coefficient.
 
 [source]
-scale_sw  = 1  # (option, int) Sachs-Wolfe term switch/scale.
+scale_sw = 1   # (option, int) Sachs-Wolfe term switch/scale.
 scale_isw = 1  # (option, int) Integrated Sachs-Wolfe term switch/scale.
 scale_dop = 1  # (option, int) Doppler term switch/scale.
 scale_pol = 1  # (option, int) Polarization term switch/scale.

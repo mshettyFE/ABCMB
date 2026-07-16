@@ -3,18 +3,14 @@ File-driven entry points for ABCMB, shared by the CLI and notebooks.
 
 Drive a run from a TOML file (:func:`load_config`, :func:`model_from_config`),
 write a run's outputs plus a reproducible run file (:func:`save_run`), or emit the
-schema defaults as a starter config (:func:`dump_defaults`). Built on the input
-:mod:`~abcmb.schema` (resolution, routing) and the :mod:`~abcmb.provenance`
-primitives (environment capture, drift, TOML serialization).
+schema defaults as a starter config (:func:`dump_defaults`).
 
-Importing this module pulls in JAX; ``import abcmb`` deliberately does not, so the
-notebook front door lives here rather than at the package top level.
 """
 
 import os
-import tomllib
 
 import numpy as np
+import tomlkit
 
 from . import provenance, schema
 
@@ -37,8 +33,10 @@ def load_config(path):
     ``[environment]`` (if present) is returned as an :class:`~abcmb.provenance.Environment`
     so a replay can be drift-checked. Returns ``(options, params, environment_or_None)``.
     """
-    with open(path, "rb") as handle:
-        data = tomllib.load(handle)
+    with open(path, encoding="utf-8") as handle:
+        # unwrap() -> plain Python types (tomlkit otherwise yields wrapper objects
+        # whose identity/dict comparisons differ from stdlib values downstream).
+        data = tomlkit.load(handle).unwrap()
 
     environment = None
     if "environment" in data:
@@ -98,40 +96,52 @@ def dump_defaults() -> str:
     add(schema.PARAM_SCHEMA, "param")
     add(schema.OPTION_SCHEMA, "option")
 
-    lines = [
-        "# ABCMB default configuration -- every option and parameter with its schema default.",
-        "#",
-        "# Tables are topical (grouped by schema 'group'). On load (model_from_config or",
-        "# `abcmb --config`) keys route to options vs params by *name*, so a key's table",
-        "# is purely for human readability; each key is tagged (param) or (option) below.",
-        "#",
-        "# Omitted (no fixed default -- supplied only when needed, or computed at runtime):",
-        "#   neutrino one-of: Neff / N_nu_massless / T_nu_massless",
-        "#   LINX inputs:     Delta_Neff_init / tau_n_fac / nuclear_rates_q",
-        "#",
-        "# Usage:  abcmb --config defaults.toml -o out.npz",
-        "#         from abcmb.config import model_from_config",
-        "#         model, params = model_from_config('defaults.toml')",
+    doc = tomlkit.document()
+    for line in (
+        "ABCMB default configuration -- every option and parameter with its schema default.",
         "",
-    ]
+        "Tables are topical (grouped by schema 'group'). On load (model_from_config or",
+        "`abcmb --config`) keys route to options vs params by *name*, so a key's table",
+        "is purely for human readability; each key is tagged (param) or (option) below.",
+        "",
+        "Omitted (no fixed default -- supplied only when needed, or computed at runtime):",
+        "  neutrino one-of: Neff / N_nu_massless / T_nu_massless",
+        "  LINX inputs:     Delta_Neff_init / tau_n_fac / nuclear_rates_q",
+        "",
+        "Usage:  abcmb --config defaults.toml -o out.npz",
+        "        from abcmb.config import model_from_config",
+        "        model, params = model_from_config('defaults.toml')",
+    ):
+        doc.add(tomlkit.comment(line))
+    doc.add(tomlkit.nl())
+
     for group in groups_order:
         rows = [
             (
                 spec.name,
-                provenance._toml_scalar(spec.default),
-                spec.doc,
-                tag,
-                spec.kind.__name__,
+                tomlkit.item(spec.default),
+                f"({tag}, {spec.kind.__name__}) {spec.doc}",
             )
             for spec, tag in group_rows[group]
         ]
-        key_w = max(len(name) for name, *_ in rows)
-        val_w = max(len(val) for _, val, *_ in rows)
-        lines.append(f"[{group}]")
-        for name, val, doc, tag, kind in rows:
-            lines.append(f"{name:<{key_w}} = {val:<{val_w}}  # ({tag}, {kind}) {doc}")
-        lines.append("")
-    return "\n".join(lines).rstrip("\n") + "\n"
+        # Pretty formatting stuff.
+        # Align the inline-comment column: pad each row up to the widest
+        # "key = value" prefix (tomlkit fixes the spacing around '=' at one space,
+        # so the '=' itself is not hand-aligned, only the trailing '#' comments).
+        left_w = max(
+            len(name) + len(" = ") + len(val.as_string()) for name, val, _ in rows
+        )
+        tbl = tomlkit.table()
+        for name, val, cmt in rows:
+            pad = left_w - (len(name) + len(" = ") + len(val.as_string()))
+            val.comment(cmt)
+            val.trivia.comment_ws = " " * pad + "  "
+            tbl[name] = val
+        doc[group] = tbl
+
+    text = tomlkit.dumps(doc)
+    # Blank header lines render as "# " -- strip the trailing space per line.
+    return "\n".join(line.rstrip() for line in text.splitlines()) + "\n"
 
 
 def save_run(output, path, model, params, *, warnings=()):
