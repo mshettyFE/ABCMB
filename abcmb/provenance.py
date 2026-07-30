@@ -162,7 +162,7 @@ def write_run_toml(run_data, handle):
     ----------
     run_data : dict
         ``{"environment": Environment, "params": dict, "options": dict,
-        "warnings": list[str]}``.
+        "warnings": list[str], "species": list[str] (optional)}``.
     handle : text-mode file object
     """
     doc = tomlkit.document()
@@ -181,6 +181,10 @@ def write_run_toml(run_data, handle):
     doc["run"] = _toml_table(
         {
             "manifest_version": MANIFEST_VERSION,
+            # Species stack of the run; a replay checks this against the
+            # reconstructed model (custom species cannot be rebuilt from a
+            # config file). None (pre-recording run files) is simply omitted.
+            "species": run_data.get("species"),
             "warnings": list(run_data.get("warnings", [])),
         }
     )

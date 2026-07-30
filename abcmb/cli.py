@@ -166,6 +166,10 @@ def main(argv=None):
         from .main import Model
 
         model = Model(**options)
+        # Replay guard: a run file's custom species cannot be rebuilt from a
+        # config, so fail loudly if the reconstructed stack differs.
+        if args.config:
+            config.check_replay_species(config.recorded_species(args.config), model)
         output = model(params)
     warn_msgs = [str(w.message) for w in caught]
     for msg in warn_msgs:

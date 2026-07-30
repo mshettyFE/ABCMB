@@ -57,19 +57,56 @@ def load_config(path):
     return options, params, environment
 
 
+def recorded_species(path):
+    """
+    Species names recorded in a saved run file's ``[run]`` table, or ``None``
+    for a plain config (or a run file from before species were recorded).
+    """
+    with open(path, encoding="utf-8") as handle:
+        data = tomlkit.load(handle).unwrap()
+    names = data.get("run", {}).get("species")
+    return list(names) if names is not None else None
+
+
+def check_replay_species(recorded, model):
+    """
+    Verify a reconstructed model matches a run file's recorded species stack.
+
+    Custom species (``user_species`` classes) cannot be rebuilt from a config
+    file, so without this check a replay would silently proceed without them.
+    Raises ``ValueError`` on mismatch; ``recorded=None`` (a plain config, or a
+    pre-recording run file) checks nothing.
+    """
+    if recorded is None:
+        return
+    current = list(model.species_dict)
+    if current != recorded:
+        raise ValueError(
+            f"replay species mismatch: the run file records {recorded} but the "
+            f"reconstructed model has {current}. Custom species cannot be "
+            "rebuilt from a config file -- reconstruct the model in code "
+            "(Model(user_species=...)) and reuse the recorded [params]."
+        )
+
+
 def model_from_config(path):
     """
     Build a Model from a TOML config (or a saved ``<out>_run.toml``) and return
     ``(model, params)``, ready to call as ``model(params)``.
 
-    The file-driven counterpart to ``Model(**options)`` — the notebook mirror of the
-    ``abcmb --config`` CLI path. Load ``(options, params)`` yourself with
-    :func:`load_config` if you need the recorded environment for a drift check.
+    The file-driven counterpart to ``Model(**options)`` — the notebook mirror of
+    the ``abcmb --config`` CLI path. If the file is a saved run file, the
+    reconstructed model's species stack is checked against the recorded one
+    (raising on mismatch — custom species cannot be rebuilt from a config).
+    Load ``(options, params)`` yourself with :func:`load_config` if you need the
+    recorded environment for a drift check.
     """
     from .main import Model
 
     options, params, _environment = load_config(path)
-    return Model(**options), params
+    model = Model(**options)
+    check_replay_species(recorded_species(path), model)
+    return model, params
 
 
 def dump_defaults() -> str:
@@ -170,7 +207,8 @@ def save_run(output, path, model, params, *, warnings=()):
     path : str
         Output path; a ``.npz`` suffix is added if missing.
     model : Model
-        The model that produced ``output`` (read for ``raw_options``).
+        The model that produced ``output`` (read for ``raw_options`` and the
+        species stack, which a replay drift-checks).
     params : dict
         The raw parameters passed to the model call.
     warnings : iterable[str], optional
@@ -180,6 +218,7 @@ def save_run(output, path, model, params, *, warnings=()):
         "environment": provenance.capture_environment(),
         "options": dict(model.raw_options),
         "params": dict(params),
+        "species": [s.name for s in model.species_list],
         "warnings": list(warnings),
     }
 

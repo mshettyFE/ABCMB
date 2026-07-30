@@ -82,13 +82,20 @@ def test_save_run_artifact(tmp_path):
         k=np.array([0.01]),
         Pk=np.array([1e3]),
     )
-    model = types.SimpleNamespace(raw_options={"l_max": 200})
+    model = types.SimpleNamespace(
+        raw_options={"l_max": 200},
+        species_list=(
+            types.SimpleNamespace(name="Baryon"),
+            types.SimpleNamespace(name="Photon"),
+        ),
+    )
     paths = config.save_run(output, str(tmp_path / "run"), model, {"omega_cdm": 0.12})
     assert paths == [str(tmp_path / "run.npz"), str(tmp_path / "run_run.toml")]
 
     with open(tmp_path / "run_run.toml", encoding="utf-8") as handle:
         data = tomlkit.load(handle).unwrap()
     assert data["options"] == {"l_max": 200}  # exactly what the user passed
+    assert data["run"]["species"] == ["Baryon", "Photon"]  # stack recorded
     assert data["params"] == {"omega_cdm": 0.12}
     assert data["environment"]["abcmb_version"]  # a fresh stamp is present
 
@@ -109,4 +116,5 @@ def test_save_run_reads_declared_output_model_fields():
     assert {"l", "ClTT", "ClTE", "ClEE", "k", "Pk"} <= {
         f.name for f in dataclasses.fields(Output)
     }
-    assert "raw_options" in {f.name for f in dataclasses.fields(Model)}
+    read_fields = {"raw_options", "species_list", "species_dict"}
+    assert read_fields <= {f.name for f in dataclasses.fields(Model)}
