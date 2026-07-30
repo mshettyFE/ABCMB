@@ -121,6 +121,20 @@ def test_y_ini_layout_mismatch_raises():
         PerturbationEvolver.initial_conditions_one_k(bad, 0.1, -14.0, (bg, params))
 
 
+def test_options_key_set_is_stable(lcdm_model):
+    # options = exactly what resolve_options returned: model construction must
+    # not stash computed keys into it (the old k_min/k_max_cmb pattern), while
+    # user passthrough extras (custom-species knobs) must survive resolution.
+    # (The shared lcdm_model is built with custom_knob=1 for exactly this.)
+    from abcmb import schema
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        resolved = set(schema.resolve_options({"custom_knob": 1}))
+    assert set(lcdm_model.options) == resolved
+    assert "custom_knob" in lcdm_model.options  # escape hatch stays open
+
+
 def test_is_neutrino_flags():
     # Opt-in trait: False unless a species declares itself neutrino-like. The
     # two neutrino classes opt in; nothing else does.

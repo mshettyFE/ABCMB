@@ -571,6 +571,13 @@ def _resolve(
             suggestion = _did_you_mean(key, known)
             if suggestion:
                 msg += f" Did you mean '{suggestion}'?"
+            else:
+                # No typo suspect -> likely a deliberate custom-species key;
+                # point at the path to making it first-class.
+                msg += (
+                    " To declare it properly (validation, docs, config replay),"
+                    " see docs/promoting_a_fluid.rst."
+                )
             if strict:
                 raise ValueError(msg)
             warnings.warn(msg, stacklevel=3)
@@ -604,6 +611,10 @@ def resolve_options(input_options, strict=False) -> "Options":
     """
     Resolve user configuration against ``OPTION_SCHEMA``, returning the populated
     options. See :func:`_resolve` for the semantics.
+
+    The returned options are treated as immutable from here on: functions that
+    compute configuration-derived quantities return them explicitly rather than
+    adding keys (pinned by ``test_options_key_set_is_stable``).
     """
     options = _resolve(
         input_options,

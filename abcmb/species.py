@@ -1,12 +1,27 @@
-from typing import ClassVar
+from collections.abc import Mapping
+from typing import TYPE_CHECKING, ClassVar
 
 import equinox as eqx
 import jax.numpy as jnp
 from jax import config, lax, vmap
+from jax.typing import ArrayLike
+from jaxtyping import Array
 
 from . import constants as cnst
 
+if TYPE_CHECKING:
+    from .background import Background
+
 config.update("jax_enable_x64", True)
+
+# The params mapping seen by fluid methods. Open (a Mapping, not the schema's
+# closed Params TypedDict) on purpose: custom species read passthrough keys the
+# schema does not declare, so the extension surface must not close the dict.
+# Params is assignable to this, so library internals keep key-name checking.
+FluidParams = Mapping[str, Array]
+# y_prime receives the full coupling context; output_perturbations the background.
+YPrimeArgs = tuple["Background", FluidParams, tuple["Fluid", ...], dict[str, int]]
+OutputArgs = tuple["Background", FluidParams]
 
 
 class Fluid(eqx.Module):
@@ -64,7 +79,7 @@ class Fluid(eqx.Module):
     def __init__(self, first_idx, options):
         self.first_idx = first_idx
 
-    def rho(self, lna, args):
+    def rho(self, lna: ArrayLike, args: FluidParams) -> Array | float:
         """
         Compute energy density.
 
@@ -87,7 +102,7 @@ class Fluid(eqx.Module):
             "Fluid species must implement an energy density function."
         )
 
-    def P(self, lna, args):
+    def P(self, lna: ArrayLike, args: FluidParams) -> Array | float:
         """
         Compute pressure.
 
@@ -108,7 +123,7 @@ class Fluid(eqx.Module):
         """
         raise NotImplementedError("Fluid species must implement a pressure function.")
 
-    def w(self, lna, args):
+    def w(self, lna: ArrayLike, args: FluidParams) -> Array | float:
         """
         Compute equation of state parameter.
 
@@ -129,7 +144,7 @@ class Fluid(eqx.Module):
         """
         return self.P(lna, args) / self.rho(lna, args)
 
-    def y_ini(self, k, tau_ini, args):
+    def y_ini(self, k: ArrayLike, tau_ini: ArrayLike, args: FluidParams) -> Array:
         """
         Compute initial conditions for perturbation modes.
 
@@ -153,7 +168,15 @@ class Fluid(eqx.Module):
             "Fluid species must implement the initial conditions of their perturbation modes."
         )
 
-    def y_prime(self, k, lna, metric_h_prime, metric_eta_prime, y, args):
+    def y_prime(
+        self,
+        k: ArrayLike,
+        lna: ArrayLike,
+        metric_h_prime: ArrayLike,
+        metric_eta_prime: ArrayLike,
+        y: Array,
+        args: YPrimeArgs,
+    ) -> Array:
         """
         Compute time derivatives of perturbation modes.
 
@@ -172,7 +195,8 @@ class Fluid(eqx.Module):
         y : array
             Current perturbation mode values
         args : tuple
-            Background cosmology and cosmological parameters (BG, params)
+            ``(BG, params, species_list, species_dict)`` -- background cosmology,
+            cosmological parameters, and the species registry for coupled fluids
 
         Returns:
         --------
@@ -183,7 +207,7 @@ class Fluid(eqx.Module):
             "Fluid species must implement a perturbation derivative function."
         )
 
-    def rho_delta(self, lna, y, args):
+    def rho_delta(self, lna: ArrayLike, y: Array, args: FluidParams) -> Array | float:
         """
         Compute density perturbation.
 
@@ -205,7 +229,9 @@ class Fluid(eqx.Module):
             "Fluid species must implement a perturbation derivative function."
         )
 
-    def rho_plus_P_theta(self, lna, y, args):
+    def rho_plus_P_theta(
+        self, lna: ArrayLike, y: Array, args: FluidParams
+    ) -> Array | float:
         """
         Compute velocity perturbation.
 
@@ -227,7 +253,9 @@ class Fluid(eqx.Module):
             "Fluid species must implement a perturbation derivative function."
         )
 
-    def rho_plus_P_sigma(self, lna, y, args):
+    def rho_plus_P_sigma(
+        self, lna: ArrayLike, y: Array, args: FluidParams
+    ) -> Array | float:
         """
         Compute shear perturbation.
 
@@ -249,7 +277,9 @@ class Fluid(eqx.Module):
             "Fluid species must implement a perturbation derivative function."
         )
 
-    def output_perturbations(self, lna, modes, args):
+    def output_perturbations(
+        self, lna: ArrayLike, modes: Array, args: OutputArgs
+    ) -> dict[str, Array]:
         """
         Return named perturbation arrays for storage in PerturbationTable.
 
@@ -291,7 +321,7 @@ class StandardFluid(Fluid):
     def __init__(self, first_idx, options):
         super().__init__(first_idx, options)
 
-    def get_delta(self, lna, y, args):
+    def get_delta(self, lna: ArrayLike, y: Array, args: FluidParams) -> Array:
         """
         Getter method for density perturbation from perturbation equations vector
 
@@ -311,7 +341,7 @@ class StandardFluid(Fluid):
         """
         return y[self.first_idx]
 
-    def get_theta(self, lna, y, args):
+    def get_theta(self, lna: ArrayLike, y: Array, args: FluidParams) -> Array:
         """
         Getter method for velocity divergence perturbation from perturbation equations vector
 
@@ -331,7 +361,7 @@ class StandardFluid(Fluid):
         """
         return jnp.where(self.num_equations > 1, y[self.first_idx + 1], 0)
 
-    def get_sigma(self, lna, y, args):
+    def get_sigma(self, lna: ArrayLike, y: Array, args: FluidParams) -> Array:
         """
         Getter method for shear perturbation from perturbation equations vector
 
@@ -352,7 +382,7 @@ class StandardFluid(Fluid):
         return jnp.where(self.num_equations > 2, y[self.first_idx + 2], 0)
 
     # Called by diffrax, child classes should never override. Okay to implement here.
-    def rho_delta(self, lna, y, args):
+    def rho_delta(self, lna: ArrayLike, y: Array, args: FluidParams) -> Array | float:
         """
         Compute energy density perturbation, contribution to metric perturbation evolution.
 
@@ -373,7 +403,9 @@ class StandardFluid(Fluid):
         params = args
         return self.rho(lna, params) * self.get_delta(lna, y, args)
 
-    def rho_plus_P_theta(self, lna, y, args):
+    def rho_plus_P_theta(
+        self, lna: ArrayLike, y: Array, args: FluidParams
+    ) -> Array | float:
         """
         Compute velocity perturbation times the sum of energy density and pressure. {0, i} component
         of the perturbed stress energy tensor.
@@ -397,7 +429,9 @@ class StandardFluid(Fluid):
             lna, y, args
         )
 
-    def rho_plus_P_sigma(self, lna, y, args):
+    def rho_plus_P_sigma(
+        self, lna: ArrayLike, y: Array, args: FluidParams
+    ) -> Array | float:
         """
         Compute shear stress perturbation, needed for CMB
 
@@ -427,25 +461,37 @@ class BackgroundFluid(Fluid):
     def __init__(self, first_idx, options):
         super().__init__(first_idx, options)
 
-    def y_ini(self, k, tau_ini, args):
+    def y_ini(self, k: ArrayLike, tau_ini: ArrayLike, args: FluidParams) -> Array:
         """
         Trivial initial condition vector for background.
         """
         return jnp.array([])
 
-    def y_prime(self, k, lna, metric_h_prime, metric_eta_prime, y, args):
+    def y_prime(
+        self,
+        k: ArrayLike,
+        lna: ArrayLike,
+        metric_h_prime: ArrayLike,
+        metric_eta_prime: ArrayLike,
+        y: Array,
+        args: YPrimeArgs,
+    ) -> Array:
         """
         Trivial derivative vector for background.
         """
         return jnp.array([])
 
-    def rho_delta(self, lna, y, args):
+    def rho_delta(self, lna: ArrayLike, y: Array, args: FluidParams) -> Array | float:
         return 0.0
 
-    def rho_plus_P_theta(self, lna, y, args):
+    def rho_plus_P_theta(
+        self, lna: ArrayLike, y: Array, args: FluidParams
+    ) -> Array | float:
         return 0.0
 
-    def rho_plus_P_sigma(self, lna, y, args):
+    def rho_plus_P_sigma(
+        self, lna: ArrayLike, y: Array, args: FluidParams
+    ) -> Array | float:
         return 0.0
 
 
@@ -1357,6 +1403,9 @@ class Baryon(StandardFluid):
         # Get photon class from list
         i = species_dict["Photon"]
         photon = species_list[i]
+        # The baryon-photon coupling needs the delta/theta/sigma layout;
+        # narrows the type and fails loudly if a Photon replacement isn't one.
+        assert isinstance(photon, StandardFluid)
 
         Tm = BG.Tm(lna, params)  # Baryon temp
         Tg = BG.TCMB(lna, params)  # Photon temp
@@ -1469,6 +1518,9 @@ class Baryon(StandardFluid):
         # Get photon class from list
         i = species_dict["Photon"]
         photon = species_list[i]
+        # The baryon-photon coupling needs the delta/theta/sigma layout;
+        # narrows the type and fails loudly if a Photon replacement isn't one.
+        assert isinstance(photon, StandardFluid)
 
         aH = BG.aH(lna, params)
         cs2 = self.cs2(lna, args)
@@ -1631,6 +1683,8 @@ class Photon(StandardFluid):
         # Get Baryon from list
         i = species_dict["Baryon"]
         baryon = species_list[i]
+        # Same structural requirement in the other direction.
+        assert isinstance(baryon, StandardFluid)
 
         aH = BG.aH(lna, params)
         tau_c = BG.tau_c(lna, params)

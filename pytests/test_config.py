@@ -100,29 +100,29 @@ def test_generated_artifacts_are_fresh():
     )
 
 
-def test_replay_species_drift(tmp_path):
+def test_replay_species_drift(tmp_path, lcdm_model):
     # A run file records the species stack; replaying one whose custom species
     # cannot be rebuilt from the config must fail loudly, not silently proceed
     # with a smaller model. A matching stack (or a plain config with no [run]
     # table) replays fine.
     import pytest
 
-    from abcmb.config import model_from_config
+    from abcmb.config import check_replay_species, model_from_config
 
     lcdm = ["DarkEnergy", "ColdDarkMatter", "Baryon", "Photon", "MasslessNeutrino"]
-    cfg = tmp_path / "out_run.toml"
 
-    def write(species_names):
-        rows = ", ".join(f'"{s}"' for s in species_names)
-        cfg.write_text(
-            f"[params]\nomega_cdm = 0.12\n[options]\n[run]\nspecies = [{rows}]\n"
-        )
-
-    write(lcdm + ["SIDR"])  # recorded a custom species the config can't rebuild
+    # Mismatch: a recorded custom species the config can't rebuild (checked
+    # against the shared model -- same check model_from_config wires in).
     with pytest.raises(ValueError, match=r"replay species mismatch.*SIDR"):
-        model_from_config(str(cfg))
+        check_replay_species(lcdm + ["SIDR"], lcdm_model)
+    check_replay_species(None, lcdm_model)  # plain config: nothing to check
 
-    write(lcdm)  # matching stack -> replays fine
+    # Matching stack end-to-end through model_from_config -> replays fine.
+    cfg = tmp_path / "out_run.toml"
+    rows = ", ".join(f'"{s}"' for s in lcdm)
+    cfg.write_text(
+        f"[params]\nomega_cdm = 0.12\n[options]\n[run]\nspecies = [{rows}]\n"
+    )
     model, params = model_from_config(str(cfg))
     assert params == {"omega_cdm": 0.12}
     assert list(model.species_dict) == lcdm

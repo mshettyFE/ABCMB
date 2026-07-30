@@ -53,8 +53,8 @@ rather than subtly:
 Keep any notebook-era ``sys.path`` hacks out; inside the package, use relative
 imports (``from . import constants as cnst``).
 
-Step 2: declare the parameters in ``PARAM_SCHEMA``
---------------------------------------------------
+Step 2: declare the parameters (and options) in the schema
+----------------------------------------------------------
 
 This is the step that converts passthrough parameters into declared ones. Add
 one :class:`~abcmb.schema.Spec` row per parameter in ``abcmb/schema.py``:
@@ -81,6 +81,19 @@ Fields worth knowing:
 * ``bounds`` / ``choices`` — non-fatal validation (warns, never raises).
 * ``aliases`` — accept alternative names (e.g. CLASS conventions).
 
+**Options work the same way.** If your fluid reads precision knobs from
+``options`` in ``__init__`` (a hierarchy cutoff, a grid setting), declare them
+as ``Spec`` rows in ``OPTION_SCHEMA`` instead. The dividing rule:
+
+* ``PARAM_SCHEMA`` — differentiable physics inputs that vary between calls of
+  the same model (they live in the ``params`` dict, as JAX arrays).
+* ``OPTION_SCHEMA`` — static configuration that shapes the computation
+  (``int``/``bool``/``str``/fixed floats); changing one means a new ``Model``
+  and a recompile.
+
+Config files route keys to the right table by *name*, so users never need to
+know which schema a key lives in.
+
 Step 3: regenerate the schema artifacts
 ---------------------------------------
 
@@ -94,7 +107,7 @@ This regenerates the two committed, schema-derived artifacts:
 what activates static key checking for them). A staleness test fails CI if
 this step is forgotten.
 
-Step 5: tests
+Step 4: tests
 -------------
 
 At minimum:
@@ -106,7 +119,7 @@ At minimum:
 * If a reference computation exists (e.g. the same model in CLASS), extend the
   accuracy test — this is the only check that validates the *physics*.
 
-Step 6: run everything
+Step 5: run everything
 ----------------------
 
 .. code-block:: bash
@@ -133,3 +146,7 @@ Pitfalls
 * **Name changes are breaking.** ``species_dict`` lookups, saved run files
   (the species drift check), and coupled fluids all key on ``name`` — treat a
   promoted fluid's name as API.
+* **Options are read-only after resolution.** Never stash computed values into
+  the ``options`` dict — return them explicitly instead — and annotate any new
+  function taking options with ``options: "Options"`` so the type checker
+  enforces this.

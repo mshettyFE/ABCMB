@@ -85,7 +85,9 @@ def check_replay_species(recorded, model):
             f"replay species mismatch: the run file records {recorded} but the "
             f"reconstructed model has {current}. Custom species cannot be "
             "rebuilt from a config file -- reconstruct the model in code "
-            "(Model(user_species=...)) and reuse the recorded [params]."
+            "(Model(user_species=...)) and reuse the recorded [params], or "
+            "promote the fluid into ABCMB so config runs can carry it "
+            "(see docs/promoting_a_fluid.rst)."
         )
 
 

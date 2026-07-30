@@ -72,7 +72,12 @@ def populate_species(
     return species_list, species_dict
 
 
-def get_k_axis_perturbations(options):
+def get_k_axis_perturbations(options: "Options"):
+    """
+    Build the perturbation k-grid and the P(k) output k-grid.
+
+    Returns ``(k_axis, k_axis_Pk_output, k_min, k_max_cmb)``.
+    """
     ks = np.zeros(2000)
 
     H0_fid = options["H0_fid"]
@@ -107,8 +112,9 @@ def get_k_axis_perturbations(options):
         i += 1
         ks[i] = k
 
-    options["k_min"] = k_min
-    options["k_max_cmb"] = k
+    # End of the CMB range; the loops below only extend the grid for lensing /
+    # a user-specified k_max, which the transfer grid must not follow.
+    k_max_cmb = k
 
     # If lensing is needed, we need to extend max k by some amount to accurately compute high-l lensing.
     if options["lensing"]:
@@ -135,18 +141,22 @@ def get_k_axis_perturbations(options):
     ks = ks[np.where(ks > 0)]
     k_axis_Pk_output = ks[np.where(ks <= options["k_max"])]
 
-    return jnp.array(ks), jnp.array(k_axis_Pk_output)
+    return jnp.array(ks), jnp.array(k_axis_Pk_output), k_min, k_max_cmb
 
 
-def get_k_axis_transfer(options):
+def get_k_axis_transfer(options: "Options", k_min, k_max_cmb):
+    """
+    Build the transfer-integration k-grid over the CMB range
+    ``[k_min, k_max_cmb]`` computed by :func:`get_k_axis_perturbations`.
+    """
     ks = np.zeros(8000)
 
     k_period = 2 * jnp.pi / (options["tau0_fid"] - options["tau_rec_fid"])
 
-    k = options["k_min"]
+    k = k_min
     ks[0] = k
     i = 0
-    while k < options["k_max_cmb"]:
+    while k < k_max_cmb:
         k = k + k_period * options["k_transfer_linstep"] * k / (
             k + options["k_transfer_linstep"] / options["k_transfer_logstep"]
         )

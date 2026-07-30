@@ -129,8 +129,8 @@ class Model(eqx.Module):
         )
 
         # Initialize perturbation evolver
-        k_axis_perturbations, k_axis_Pk_output = model_setup.get_k_axis_perturbations(
-            options
+        k_axis_perturbations, k_axis_Pk_output, k_min, k_max_cmb = (
+            model_setup.get_k_axis_perturbations(options)
         )
         self.PE = perturbations.PerturbationEvolver(
             self.species_list,
@@ -141,7 +141,7 @@ class Model(eqx.Module):
         )
 
         # Intialize spectrum solver
-        k_axis_transfer = model_setup.get_k_axis_transfer(options)
+        k_axis_transfer = model_setup.get_k_axis_transfer(options, k_min, k_max_cmb)
         self.SS = spectrum.SpectrumSolver(
             options["l_min"],
             options["l_max"],
