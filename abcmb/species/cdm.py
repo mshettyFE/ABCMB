@@ -3,9 +3,11 @@ Cold dark matter.
 """
 
 import jax.numpy as jnp
+from jax.typing import ArrayLike
+from jaxtyping import Array
 
 from .. import constants as cnst
-from .base import StandardFluid
+from .base import FluidParams, OutputArgs, PerturbationContext, StandardFluid
 
 
 class ColdDarkMatter(StandardFluid):
@@ -30,7 +32,7 @@ class ColdDarkMatter(StandardFluid):
     def __init__(self, first_idx, options):
         super().__init__(first_idx, options)
 
-    def rho(self, lna, args):
+    def rho(self, lna: ArrayLike, args: FluidParams) -> Array | float:
         """
         Compute cold dark matter density.
 
@@ -53,7 +55,7 @@ class ColdDarkMatter(StandardFluid):
             / jnp.exp(lna) ** 3
         )
 
-    def P(self, lna, args):
+    def P(self, lna: ArrayLike, args: FluidParams) -> Array | float:
         """
         Compute cold dark matter pressure.
 
@@ -75,7 +77,7 @@ class ColdDarkMatter(StandardFluid):
         """
         return 0.0
 
-    def y_ini(self, k, tau_ini, args):
+    def y_ini(self, k: ArrayLike, tau_ini: ArrayLike, args: FluidParams) -> Array:
         """
         Compute initial conditions for cold dark matter perturbations.
 
@@ -97,7 +99,15 @@ class ColdDarkMatter(StandardFluid):
         delta = -((k * tau_ini) ** 2) / 4.0 * (1.0 - params["om"] * tau_ini / 5.0)
         return jnp.array([delta])
 
-    def y_prime(self, k, lna, metric_h_prime, metric_eta_prime, y, args):
+    def y_prime(
+        self,
+        k: ArrayLike,
+        lna: ArrayLike,
+        metric_h_prime: ArrayLike,
+        metric_eta_prime: ArrayLike,
+        y: Array,
+        args: PerturbationContext,
+    ) -> Array:
         """
         Compute time derivatives of cold dark matter perturbations.
 
@@ -126,5 +136,7 @@ class ColdDarkMatter(StandardFluid):
         """
         return jnp.array([-0.5 * metric_h_prime])
 
-    def output_perturbations(self, lna, modes, args):
+    def output_perturbations(
+        self, lna: ArrayLike, modes: Array, args: OutputArgs
+    ) -> dict[str, Array]:
         return {"delta": modes[self.first_idx]}

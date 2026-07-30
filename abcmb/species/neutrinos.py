@@ -5,9 +5,11 @@ Massless and massive neutrinos.
 import equinox as eqx
 import jax.numpy as jnp
 from jax import vmap
+from jax.typing import ArrayLike
+from jaxtyping import Array
 
 from .. import constants as cnst
-from .base import Fluid, StandardFluid
+from .base import Fluid, FluidParams, OutputArgs, PerturbationContext, StandardFluid
 
 
 class MasslessNeutrino(StandardFluid):
@@ -30,7 +32,7 @@ class MasslessNeutrino(StandardFluid):
         super().__init__(first_idx, options)
         self.num_equations = options["l_max_massless_nu"] + 1
 
-    def rho(self, lna, args):
+    def rho(self, lna: ArrayLike, args: FluidParams) -> Array | float:
         """
         Compute neutrino density.
 
@@ -63,7 +65,7 @@ class MasslessNeutrino(StandardFluid):
         rho = rho / (cnst.c * cnst.hbar) ** 3  # Convert to eV cm^{-3}
         return rho
 
-    def P(self, lna, args):
+    def P(self, lna: ArrayLike, args: FluidParams) -> Array | float:
         """
         Compute neutrino pressure.
 
@@ -82,7 +84,7 @@ class MasslessNeutrino(StandardFluid):
         params = args
         return self.rho(lna, params) / 3.0
 
-    def y_ini(self, k, tau_ini, args):
+    def y_ini(self, k: ArrayLike, tau_ini: ArrayLike, args: FluidParams) -> Array:
         """
         Compute initial conditions for massless neutrino perturbations.
 
@@ -141,7 +143,15 @@ class MasslessNeutrino(StandardFluid):
             (jnp.array([delta, theta, sigma]), jnp.zeros(self.num_equations - 3))
         )
 
-    def y_prime(self, k, lna, metric_h_prime, metric_eta_prime, y, args):
+    def y_prime(
+        self,
+        k: ArrayLike,
+        lna: ArrayLike,
+        metric_h_prime: ArrayLike,
+        metric_eta_prime: ArrayLike,
+        y: Array,
+        args: PerturbationContext,
+    ) -> Array:
         """
         Compute time derivatives of massless neutrino perturbations.
 
@@ -202,7 +212,9 @@ class MasslessNeutrino(StandardFluid):
             )
         )
 
-    def output_perturbations(self, lna, modes, args):
+    def output_perturbations(
+        self, lna: ArrayLike, modes: Array, args: OutputArgs
+    ) -> dict[str, Array]:
         return {
             "delta": modes[self.first_idx],
             "theta": modes[self.first_idx + 1],
@@ -253,7 +265,7 @@ class MassiveNeutrino(Fluid):
         self.num_ells_per_bin = options["l_max_massive_nu"] + 1
         self.num_equations = 3 * self.num_ells_per_bin
 
-    def rho(self, lna, args):
+    def rho(self, lna: ArrayLike, args: FluidParams) -> Array | float:
         """
         Compute massive neutrino density.
 
@@ -299,7 +311,7 @@ class MassiveNeutrino(Fluid):
         # Remove extra dimension if original input was scalar
         return jnp.squeeze(rho_val) if jnp.ndim(lna) == 0 else rho_val
 
-    def P(self, lna, args):
+    def P(self, lna: ArrayLike, args: FluidParams) -> Array | float:
         """
         Compute massive neutrino pressure.
 
@@ -346,7 +358,7 @@ class MassiveNeutrino(Fluid):
         # Remove extra dimension if original input was scalar
         return jnp.squeeze(P_val) if jnp.ndim(lna) == 0 else P_val
 
-    def y_ini(self, k, tau_ini, args):
+    def y_ini(self, k: ArrayLike, tau_ini: ArrayLike, args: FluidParams) -> Array:
         """
         Compute initial conditions for massive neutrino perturbations.
 
@@ -416,7 +428,15 @@ class MassiveNeutrino(Fluid):
 
         return jnp.concatenate(bins)
 
-    def y_prime(self, k, lna, metric_h_prime, metric_eta_prime, y, args):
+    def y_prime(
+        self,
+        k: ArrayLike,
+        lna: ArrayLike,
+        metric_h_prime: ArrayLike,
+        metric_eta_prime: ArrayLike,
+        y: Array,
+        args: PerturbationContext,
+    ) -> Array:
         """
         Compute time derivatives of massive neutrino perturbations.
 
@@ -502,7 +522,7 @@ class MassiveNeutrino(Fluid):
 
         return jnp.concatenate(bins)
 
-    def rho_delta(self, lna, y, args):
+    def rho_delta(self, lna: ArrayLike, y: Array, args: FluidParams) -> Array | float:
         """
         Compute massive neutrino density perturbation.
 
@@ -543,7 +563,9 @@ class MassiveNeutrino(Fluid):
             / cnst.c**3
         )
 
-    def rho_plus_P_theta(self, lna, y, args):
+    def rho_plus_P_theta(
+        self, lna: ArrayLike, y: Array, args: FluidParams
+    ) -> Array | float:
         """
         Compute massive neutrino velocity perturbation.
 
@@ -582,7 +604,9 @@ class MassiveNeutrino(Fluid):
             / cnst.c**3
         )
 
-    def rho_plus_P_sigma(self, lna, y, args):
+    def rho_plus_P_sigma(
+        self, lna: ArrayLike, y: Array, args: FluidParams
+    ) -> Array | float:
         """
         Compute massive neutrino shear perturbation.
 
@@ -624,7 +648,9 @@ class MassiveNeutrino(Fluid):
             / cnst.c**3
         )
 
-    def output_perturbations(self, lna, modes, args):
+    def output_perturbations(
+        self, lna: ArrayLike, modes: Array, args: OutputArgs
+    ) -> dict[str, Array]:
         BG, params = args
         rho = vmap(self.rho, in_axes=(0, None))(lna, params)  # (Nlna,)
         rhoP = rho + vmap(self.P, in_axes=(0, None))(lna, params)

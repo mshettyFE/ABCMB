@@ -3,9 +3,11 @@ Cosmological-constant dark energy (background only).
 """
 
 import jax.numpy as jnp
+from jax.typing import ArrayLike
+from jaxtyping import Array
 
 from .. import constants as cnst
-from .base import BackgroundFluid
+from .base import BackgroundFluid, FluidParams
 
 
 class DarkEnergy(BackgroundFluid):
@@ -25,7 +27,7 @@ class DarkEnergy(BackgroundFluid):
     def __init__(self, first_idx, options):
         super().__init__(first_idx, options)
 
-    def rho(self, lna, args):
+    def rho(self, lna: ArrayLike, args: FluidParams) -> Array | float:
         """
         Compute dark energy density.
 
@@ -46,7 +48,7 @@ class DarkEnergy(BackgroundFluid):
             3.0 * cnst.H0_over_h**2 / 8.0 / jnp.pi / cnst.G
         )
 
-    def P(self, lna, args):
+    def P(self, lna: ArrayLike, args: FluidParams) -> Array | float:
         """
         Compute dark energy pressure.
 

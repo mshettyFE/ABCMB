@@ -6,9 +6,11 @@ fluid at runtime via species_dict (a name lookup, deliberately not an import).
 import equinox as eqx
 import jax.numpy as jnp
 from jax import lax
+from jax.typing import ArrayLike
+from jaxtyping import Array
 
 from .. import constants as cnst
-from .base import StandardFluid
+from .base import FluidParams, OutputArgs, PerturbationContext, StandardFluid
 
 
 class Photon(StandardFluid):
@@ -43,7 +45,7 @@ class Photon(StandardFluid):
         self.num_G_ell_modes = options["l_max_pol_g"] + 1
         self.num_equations = self.num_F_ell_modes + self.num_G_ell_modes
 
-    def rho(self, lna, args):
+    def rho(self, lna: ArrayLike, args: FluidParams) -> Array | float:
         """
         Compute photon density.
 
@@ -65,7 +67,7 @@ class Photon(StandardFluid):
             jnp.pi**2 / 15.0 * params["TCMB0"] ** 4 / a**4 / (cnst.c * cnst.hbar) ** 3
         )
 
-    def P(self, lna, args):
+    def P(self, lna: ArrayLike, args: FluidParams) -> Array | float:
         """
         Compute photon pressure.
 
@@ -84,7 +86,7 @@ class Photon(StandardFluid):
         params = args
         return self.rho(lna, params) / 3.0
 
-    def y_ini(self, k, tau_ini, args):
+    def y_ini(self, k: ArrayLike, tau_ini: ArrayLike, args: FluidParams) -> Array:
         """
         Compute initial conditions for photon perturbations.
 
@@ -122,7 +124,15 @@ class Photon(StandardFluid):
             (jnp.array([delta, theta]), jnp.zeros(self.num_equations - 2))
         )
 
-    def y_prime(self, k, lna, metric_h_prime, metric_eta_prime, y, args):
+    def y_prime(
+        self,
+        k: ArrayLike,
+        lna: ArrayLike,
+        metric_h_prime: ArrayLike,
+        metric_eta_prime: ArrayLike,
+        y: Array,
+        args: PerturbationContext,
+    ) -> Array:
         """
         Compute time derivatives of photon perturbations.
 
@@ -220,7 +230,9 @@ class Photon(StandardFluid):
             )
         )
 
-    def output_perturbations(self, lna, modes, args):
+    def output_perturbations(
+        self, lna: ArrayLike, modes: Array, args: OutputArgs
+    ) -> dict[str, Array]:
         return {
             "delta": modes[self.first_idx],
             "theta": modes[self.first_idx + 1],

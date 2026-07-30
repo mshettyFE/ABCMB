@@ -3,10 +3,17 @@ Baryons. Coupled to the Photon fluid at runtime via species_dict
 (a name lookup, deliberately not an import).
 """
 
+from typing import TYPE_CHECKING
+
 import jax.numpy as jnp
+from jax.typing import ArrayLike
+from jaxtyping import Array
 
 from .. import constants as cnst
-from .base import StandardFluid
+from .base import FluidParams, OutputArgs, PerturbationContext, StandardFluid
+
+if TYPE_CHECKING:
+    from ..background import Background
 
 
 class Baryon(StandardFluid):
@@ -32,7 +39,7 @@ class Baryon(StandardFluid):
     def __init__(self, first_idx, options):
         super().__init__(first_idx, options)
 
-    def rho(self, lna, args):
+    def rho(self, lna: ArrayLike, args: FluidParams) -> Array | float:
         """
         Compute baryon density.
 
@@ -54,7 +61,7 @@ class Baryon(StandardFluid):
             / jnp.exp(lna) ** 3
         )
 
-    def P(self, lna, args):
+    def P(self, lna: ArrayLike, args: FluidParams) -> Array | float:
         """
         Compute baryon pressure.
 
@@ -76,7 +83,7 @@ class Baryon(StandardFluid):
         """
         return 0.0
 
-    def cs2(self, lna, args):
+    def cs2(self, lna: ArrayLike, args: PerturbationContext) -> Array:
         """
         Compute sound speed squared.
 
@@ -129,7 +136,9 @@ class Baryon(StandardFluid):
             )
         )
 
-    def mean_mass(self, lna, args):
+    def mean_mass(
+        self, lna: ArrayLike, args: "tuple[Background, FluidParams]"
+    ) -> Array:
         """
         Compute mean baryon mass at given redshift.
 
@@ -155,7 +164,7 @@ class Baryon(StandardFluid):
         ) + cnst.mH / cnst.mHe * params["YHe"]
         return cnst.mH / denom
 
-    def y_ini(self, k, tau_ini, args):
+    def y_ini(self, k: ArrayLike, tau_ini: ArrayLike, args: FluidParams) -> Array:
         """
         Compute initial conditions for baryon perturbations.
 
@@ -191,7 +200,15 @@ class Baryon(StandardFluid):
         )
         return jnp.array([delta, theta])
 
-    def y_prime(self, k, lna, metric_h_prime, metric_eta_prime, y, args):
+    def y_prime(
+        self,
+        k: ArrayLike,
+        lna: ArrayLike,
+        metric_h_prime: ArrayLike,
+        metric_eta_prime: ArrayLike,
+        y: Array,
+        args: PerturbationContext,
+    ) -> Array:
         """
         Compute time derivatives of baryon perturbations.
 
@@ -239,7 +256,9 @@ class Baryon(StandardFluid):
 
         return jnp.array([delta_prime, theta_prime])
 
-    def output_perturbations(self, lna, modes, args):
+    def output_perturbations(
+        self, lna: ArrayLike, modes: Array, args: OutputArgs
+    ) -> dict[str, Array]:
         return {
             "delta": modes[self.first_idx],
             "theta": modes[self.first_idx + 1],
