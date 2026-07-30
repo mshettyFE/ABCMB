@@ -40,8 +40,9 @@ The base-class contracts are enforced, so an incomplete promotion fails loudly
 rather than subtly:
 
 * ``name`` and ``is_matter`` are abstract — declare both as class attributes
-  (a missing one raises at instantiation). ``name`` must be unique
-  (``populate_species`` rejects duplicates).
+  (a missing one raises at instantiation; ``BackgroundFluid`` already declares
+  ``is_matter = False``, so background-only fluids need only a name). ``name``
+  must be unique (``populate_species`` rejects duplicates).
 * ``num_equations`` has no default — declare it as a class attribute or in
   ``__init__`` (``BackgroundFluid`` already declares 0). It must match the
   size of your ``y_ini``/``y_prime`` arrays; ABCMB cross-checks this at

@@ -69,6 +69,19 @@ def test_abstract_name_is_matter_enforced():
     with pytest.raises(TypeError, match="abstract attributes"):
         Incomplete(0, _options())
 
+    # BackgroundFluid declares is_matter = False (a background-only fluid
+    # cannot be matter), so its subclasses need only a name.
+    class BgOnlyName(species.BackgroundFluid):
+        name = "BgOnlyName"
+
+        def rho(self, lna, args):
+            return 0.0
+
+        def P(self, lna, args):
+            return 0.0
+
+    assert BgOnlyName(0, _options()).is_matter is False
+
 
 def test_missing_num_equations_raises():
     # num_equations has no default: a perturbed fluid that silently inherited

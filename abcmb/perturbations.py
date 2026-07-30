@@ -9,7 +9,7 @@ from jax import lax, vmap
 from jaxtyping import Array
 
 from . import constants as cnst
-from .species import Fluid
+from .species import Fluid, PerturbationContext
 
 if TYPE_CHECKING:
     from ._schema_types import Options
@@ -37,8 +37,8 @@ class PerturbationEvolver(eqx.Module):
     species_list : tuple
         A list of all fluids in the cosmology
     species_dict : dict
-        A dictionary containing the names of all fluids, in the same order as
-        they appear in species_list.
+        Maps each fluid's name to its index in species_list
+        (the coupling registry).
     k_axis_perturbations : Array
         A list of wavenumbers k at which to compute perturbations
     options : dict
@@ -291,7 +291,7 @@ class PerturbationEvolver(eqx.Module):
         )
 
         # Now loop over all species and assemble their respective y_primes
-        args = (BG, params, self.species_list, self.species_dict)
+        args = PerturbationContext(BG, params, self.species_list, self.species_dict)
         y_prime = jnp.array([metric_eta_prime])
         for i in range(len(self.species_list)):
             species = self.species_list[i]
@@ -432,9 +432,9 @@ class PerturbationEvolver(eqx.Module):
         karr = k[None, :]
         a = jnp.exp(lna)[:, None]
         aH = BG.aH(lna, params)[:, None]
-        cs2 = Baryon.cs2(lna, (BG, params, self.species_list, self.species_dict))[
-            :, None
-        ]
+        cs2 = Baryon.cs2(
+            lna, PerturbationContext(BG, params, self.species_list, self.species_dict)
+        )[:, None]
         R = (
             4.0
             * Photon.rho(lna, params)[:, None]

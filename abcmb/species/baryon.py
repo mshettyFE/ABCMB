@@ -40,7 +40,7 @@ class Baryon(StandardFluid):
         -----------
         lna : float
             Logarithm of scale factor
-        args : dict
+        args : mapping
             Cosmological parameters (params)
 
         Returns:
@@ -48,9 +48,8 @@ class Baryon(StandardFluid):
         float
             Baryon density (units: eV cm^{-3})
         """
-        params = args
         return (
-            params["omega_b"]
+            args["omega_b"]
             * (3.0 * cnst.H0_over_h**2 / 8.0 / jnp.pi / cnst.G)
             / jnp.exp(lna) ** 3
         )
@@ -63,7 +62,7 @@ class Baryon(StandardFluid):
         ------------
         lna : float
             Logarithm of scale factor
-        args : dict
+        args : mapping
             Cosmological parameters (params)
 
         Returns:
@@ -85,8 +84,10 @@ class Baryon(StandardFluid):
         -----------
         lna : float
             Logarithm of scale factor
-        args : tuple
-            Background cosmology and cosmological parameters (BG, params)
+        args : PerturbationContext
+            Background cosmology, cosmological parameters, and the species
+            registry for coupled fluids (use ``args.BG``, ``args.params``,
+            ``args.species_list``, ``args.species_dict``)
 
         Returns:
         --------
@@ -100,10 +101,9 @@ class Baryon(StandardFluid):
         during recombination. During reionization this cs2 is negative. This is not physical
         but it should not matter for cosmology.
         """
-        BG, params, species_list, species_dict = args
+        BG, params = args.BG, args.params
         # Get photon class from list
-        i = species_dict["Photon"]
-        photon = species_list[i]
+        photon = args.species_list[args.species_dict["Photon"]]
         # The baryon-photon coupling needs the delta/theta/sigma layout;
         # narrows the type and fails loudly if a Photon replacement isn't one.
         assert isinstance(photon, StandardFluid)
@@ -165,7 +165,7 @@ class Baryon(StandardFluid):
             Wavenumber (units: Mpc^{-1})
         tau_ini : float
             Initial conformal time (units: Mpc)
-        args : dict
+        args : mapping
             Cosmological parameters (params)
 
         Returns:
@@ -207,18 +207,19 @@ class Baryon(StandardFluid):
             Derivative of metric eta
         y : array
             Current perturbation mode values
-        args : tuple
-            Background cosmology and cosmological parameters (BG, params)
+        args : PerturbationContext
+            Background cosmology, cosmological parameters, and the species
+            registry for coupled fluids (use ``args.BG``, ``args.params``,
+            ``args.species_list``, ``args.species_dict``)
 
         Returns:
         --------
         array
             Time derivatives of perturbation modes (units: 1/Mpc for theta, else dimensionless)
         """
-        BG, params, species_list, species_dict = args
+        BG, params = args.BG, args.params
         # Get photon class from list
-        i = species_dict["Photon"]
-        photon = species_list[i]
+        photon = args.species_list[args.species_dict["Photon"]]
         # The baryon-photon coupling needs the delta/theta/sigma layout;
         # narrows the type and fails loudly if a Photon replacement isn't one.
         assert isinstance(photon, StandardFluid)

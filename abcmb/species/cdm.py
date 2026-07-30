@@ -38,7 +38,7 @@ class ColdDarkMatter(StandardFluid):
         -----------
         lna : float
             Logarithm of scale factor
-        args : dict
+        args : mapping
             Cosmological parameters (params)
 
         Returns:
@@ -61,7 +61,7 @@ class ColdDarkMatter(StandardFluid):
         -----------
         lna : float
             Logarithm of scale factor
-        args : dict
+        args : mapping
             Cosmological parameters (params)
 
         Returns:
@@ -85,7 +85,7 @@ class ColdDarkMatter(StandardFluid):
             Wavenumber (units: Mpc^{-1})
         tau_ini : float
             Initial conformal time (units: Mpc)
-        args : dict
+        args : mapping
             Cosmological parameters (params)
 
         Returns:
@@ -113,8 +113,11 @@ class ColdDarkMatter(StandardFluid):
             Derivative of metric eta
         y : array
             Current perturbation mode values
-        args : tuple
-            Background cosmology and cosmological parameters (BG, params) - Note: BG parameter is unused in this implementation
+        args : PerturbationContext
+            Background cosmology, cosmological parameters, and the species
+            registry for coupled fluids (use ``args.BG``, ``args.params``,
+            ``args.species_list``, ``args.species_dict``)
+            -- BG is unused in this implementation
 
         Returns:
         --------

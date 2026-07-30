@@ -53,8 +53,8 @@ class Model(eqx.Module):
     species_list : tuple
         A list of all fluids in the user cosmology
     species_dict : dict
-        A dictionary containing the names of all fluids, in the same order as
-        they appear in species_list.
+        Maps each fluid's name to its index in species_list
+        (the coupling registry).
     PArthENoPE_CLASS_table  : Array
         A 2D table for interpolation of the helium-4 mass fraction based
         on the user's input baryon density and Neff

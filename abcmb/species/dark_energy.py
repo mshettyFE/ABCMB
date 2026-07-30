@@ -21,7 +21,6 @@ class DarkEnergy(BackgroundFluid):
     """
 
     name = "DarkEnergy"
-    is_matter = False
 
     def __init__(self, first_idx, options):
         super().__init__(first_idx, options)
@@ -34,7 +33,7 @@ class DarkEnergy(BackgroundFluid):
         -----------
         lna : float
             Logarithm of scale factor
-        args : dict
+        args : mapping
             Cosmological parameters (params)
 
         Returns:
@@ -55,7 +54,7 @@ class DarkEnergy(BackgroundFluid):
         -----------
         lna : float
             Logarithm of scale factor
-        args : dict
+        args : mapping
             Cosmological parameters (params)
 
         Returns:

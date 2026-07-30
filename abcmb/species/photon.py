@@ -51,7 +51,7 @@ class Photon(StandardFluid):
         -----------
         lna : float
             Logarithm of scale factor
-        args : dict
+        args : mapping
             Cosmological parameters (params)
 
         Returns:
@@ -73,7 +73,7 @@ class Photon(StandardFluid):
         -----------
         lna : float
             Logarithm of scale factor
-        args : dict
+        args : mapping
             Cosmological parameters (params)
 
         Returns:
@@ -94,7 +94,7 @@ class Photon(StandardFluid):
             Wavenumber (units: Mpc^{-1})
         tau_ini : float
             Initial conformal time (units: Mpc)
-        args : dict
+        args : mapping
             Cosmological parameters (params)
 
         Returns:
@@ -138,18 +138,19 @@ class Photon(StandardFluid):
             Derivative of metric eta
         y : array
             Current perturbation mode values
-        args : tuple
-            Background cosmology and cosmological parameters (BG, params)
+        args : PerturbationContext
+            Background cosmology, cosmological parameters, and the species
+            registry for coupled fluids (use ``args.BG``, ``args.params``,
+            ``args.species_list``, ``args.species_dict``)
 
         Returns:
         --------
         array
             Time derivatives of perturbation modes (units: 1/Mpc for theta, else dimensionless)
         """
-        BG, params, species_list, species_dict = args
+        BG, params = args.BG, args.params
         # Get Baryon from list
-        i = species_dict["Baryon"]
-        baryon = species_list[i]
+        baryon = args.species_list[args.species_dict["Baryon"]]
         # Same structural requirement in the other direction.
         assert isinstance(baryon, StandardFluid)
 

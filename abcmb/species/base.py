@@ -3,7 +3,7 @@ Fluid base classes and the fluid-interface type aliases.
 """
 
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, ClassVar, NamedTuple
 
 import equinox as eqx
 import jax.numpy as jnp
@@ -22,8 +22,27 @@ config.update("jax_enable_x64", True)
 # When adding fluids to library,  refer to docs/promoting_a_fluid.rst
 # Params is assignable to this, so library internals keep key-name checking.
 FluidParams = Mapping[str, Array]
-# y_prime receives the full coupling context; output_perturbations the background.
-YPrimeArgs = tuple["Background", FluidParams, tuple["Fluid", ...], dict[str, int]]
+
+
+class PerturbationContext(NamedTuple):
+    """
+    Everything a fluid's ``y_prime`` may need beyond its own state: the
+    background cosmology, the params mapping, and the species registry for
+    coupled fluids.
+
+    Prefer attribute access (``args.params``, ``args.species_dict``); the
+    context also unpacks positionally as ``(BG, params, species_list,
+    species_dict)`` for backward compatibility, but positional unpacking is
+    arity-coupled if fields are ever added.
+    """
+
+    BG: "Background"
+    params: FluidParams
+    species_list: "tuple[Fluid, ...]"
+    species_dict: dict[str, int]
+
+
+# output_perturbations receives only the background half of the context.
 OutputArgs = tuple["Background", FluidParams]
 
 
@@ -91,7 +110,7 @@ class Fluid(eqx.Module):
         -----------
         lna : float
             Logarithm of scale factor
-        args : dict
+        args : mapping
             Cosmological parameters (params)
 
         Returns:
@@ -112,7 +131,7 @@ class Fluid(eqx.Module):
         -----------
         lna : float
             Logarithm of scale factor
-        args : dict
+        args : mapping
             Cosmological parameters (params)
 
         Returns:
@@ -133,7 +152,7 @@ class Fluid(eqx.Module):
         -----------
         lna : float
             Logarithm of scale factor
-        args : dict
+        args : mapping
             Cosmological parameters (params)
 
         Returns:
@@ -153,7 +172,7 @@ class Fluid(eqx.Module):
             Wavenumber (units: Mpc^{-1})
         tau_ini : float
             Initial conformal time (units: Mpc)
-        args : dict
+        args : mapping
             Cosmological parameters (params)
 
         Returns:
@@ -172,7 +191,7 @@ class Fluid(eqx.Module):
         metric_h_prime: ArrayLike,
         metric_eta_prime: ArrayLike,
         y: Array,
-        args: YPrimeArgs,
+        args: PerturbationContext,
     ) -> Array:
         """
         Compute time derivatives of perturbation modes.
@@ -189,9 +208,11 @@ class Fluid(eqx.Module):
             Derivative of metric eta
         y : array
             Current perturbation mode values
-        args : tuple
-            ``(BG, params, species_list, species_dict)`` -- background cosmology,
-            cosmological parameters, and the species registry for coupled fluids
+        args : PerturbationContext
+            Background cosmology, cosmological parameters, and the species
+            registry for coupled fluids. Prefer ``args.params`` /
+            ``args.species_dict`` attribute access; unpacks positionally as
+            ``(BG, params, species_list, species_dict)`` too.
 
         Returns:
         --------
@@ -212,7 +233,7 @@ class Fluid(eqx.Module):
             Logarithm of scale factor
         y : array
             Perturbation mode values
-        args : dict
+        args : mapping
             Cosmological parameters (params)
 
         Returns:
@@ -236,7 +257,7 @@ class Fluid(eqx.Module):
             Logarithm of scale factor
         y : array
             Perturbation mode values
-        args : dict
+        args : mapping
             Cosmological parameters (params)
 
         Returns:
@@ -260,7 +281,7 @@ class Fluid(eqx.Module):
             Logarithm of scale factor
         y : array
             Perturbation mode values
-        args : dict
+        args : mapping
             Cosmological parameters (params)
 
         Returns:
@@ -326,7 +347,7 @@ class StandardFluid(Fluid):
             Logarithm of scale factor
         y : array
             Perturbation mode values
-        args : dict
+        args : mapping
             Cosmological parameters (params)
 
         Returns:
@@ -346,7 +367,7 @@ class StandardFluid(Fluid):
             Logarithm of scale factor
         y : array
             Perturbation mode values
-        args : dict
+        args : mapping
             Cosmological parameters (params)
 
         Returns:
@@ -354,7 +375,9 @@ class StandardFluid(Fluid):
         float
             Velocity divergence perturbation (units: 1/Mpc)
         """
-        return jnp.where(self.num_equations > 1, y[self.first_idx + 1], 0)
+        if self.num_equations > 1:
+            return y[self.first_idx + 1]
+        return jnp.zeros_like(y[self.first_idx])
 
     def get_sigma(self, lna: ArrayLike, y: Array, args: FluidParams) -> Array:
         """
@@ -366,7 +389,7 @@ class StandardFluid(Fluid):
             Logarithm of scale factor
         y : array
             Perturbation mode values
-        args : dict
+        args : mapping
             Cosmological parameters (params)
 
         Returns:
@@ -374,7 +397,9 @@ class StandardFluid(Fluid):
         float
             Dimensionless shear perturbation (units: None)
         """
-        return jnp.where(self.num_equations > 2, y[self.first_idx + 2], 0)
+        if self.num_equations > 2:
+            return y[self.first_idx + 2]
+        return jnp.zeros_like(y[self.first_idx])
 
     # Called by diffrax, child classes should never override. Okay to implement here.
     def rho_delta(self, lna: ArrayLike, y: Array, args: FluidParams) -> Array | float:
@@ -387,7 +412,7 @@ class StandardFluid(Fluid):
             Logarithm of scale factor
         y : array
             Perturbation mode values
-        args : dict
+        args : mapping
             Cosmological parameters (params)
 
         Returns:
@@ -411,7 +436,7 @@ class StandardFluid(Fluid):
             Logarithm of scale factor
         y : array
             Perturbation mode values
-        args : dict
+        args : mapping
             Cosmological parameters (params)
 
         Returns:
@@ -436,7 +461,7 @@ class StandardFluid(Fluid):
             Logarithm of scale factor
         y : array
             Perturbation mode values
-        args : dict
+        args : mapping
             Cosmological parameters (params)
 
         Returns:
@@ -452,6 +477,10 @@ class StandardFluid(Fluid):
 
 class BackgroundFluid(Fluid):
     num_equations = 0
+    # Forced, not a default: P(k) membership is consumed through rho_delta,
+    # which is hard-wired to zero below -- a "matter" fluid with no density
+    # perturbation would be incoherent. Subclasses need only declare `name`.
+    is_matter = False
 
     def __init__(self, first_idx, options):
         super().__init__(first_idx, options)
@@ -469,7 +498,7 @@ class BackgroundFluid(Fluid):
         metric_h_prime: ArrayLike,
         metric_eta_prime: ArrayLike,
         y: Array,
-        args: YPrimeArgs,
+        args: PerturbationContext,
     ) -> Array:
         """
         Trivial derivative vector for background.
@@ -488,6 +517,3 @@ class BackgroundFluid(Fluid):
         self, lna: ArrayLike, y: Array, args: FluidParams
     ) -> Array | float:
         return 0.0
-
-
-### BEGINNING OF CONCRETE CLASSES ###

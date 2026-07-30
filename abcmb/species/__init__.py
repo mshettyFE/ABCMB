@@ -13,8 +13,8 @@ from .base import (
     Fluid,
     FluidParams,
     OutputArgs,
+    PerturbationContext,
     StandardFluid,
-    YPrimeArgs,
 )
 from .cdm import ColdDarkMatter
 from .dark_energy import DarkEnergy
@@ -33,5 +33,5 @@ __all__ = [
     "OutputArgs",
     "Photon",
     "StandardFluid",
-    "YPrimeArgs",
+    "PerturbationContext",
 ]

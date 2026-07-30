@@ -38,7 +38,7 @@ class MasslessNeutrino(StandardFluid):
         -----------
         lna : float
             Logarithm of scale factor
-        args : dict
+        args : mapping
             Cosmological parameters (params)
 
         Returns:
@@ -71,7 +71,7 @@ class MasslessNeutrino(StandardFluid):
         -----------
         lna : float
             Logarithm of scale factor
-        args : dict
+        args : mapping
             Cosmological parameters (params)
 
         Returns:
@@ -92,7 +92,7 @@ class MasslessNeutrino(StandardFluid):
             Wavenumber (units: Mpc^{-1})
         tau_ini : float
             Initial conformal time (units: Mpc)
-        args : dict
+        args : mapping
             Cosmological parameters (params)
 
         Returns:
@@ -157,15 +157,17 @@ class MasslessNeutrino(StandardFluid):
             Derivative of metric eta
         y : array
             Current perturbation mode values
-        args : tuple
-            Background cosmology and cosmological parameters (BG, params)
+        args : PerturbationContext
+            Background cosmology, cosmological parameters, and the species
+            registry for coupled fluids (use ``args.BG``, ``args.params``,
+            ``args.species_list``, ``args.species_dict``)
 
         Returns:
         --------
         array
             Time derivatives of perturbation modes (units: 1/Mpc for theta, else dimensionless)
         """
-        BG, params, _, _ = args
+        BG, params = args.BG, args.params
         aH = BG.aH(lna, params)
         tau = BG.tau(lna)
 
@@ -259,7 +261,7 @@ class MassiveNeutrino(Fluid):
         -----------
         lna : float or ArrayLike
             Logarithm of scale factor
-        args : dict
+        args : mapping
             Cosmological parameters (params)
 
         Returns:
@@ -305,7 +307,7 @@ class MassiveNeutrino(Fluid):
         -----------
         lna : float or ArrayLike
             Logarithm of scale factor
-        args : dict
+        args : mapping
             Cosmological parameters (params)
 
         Returns:
@@ -354,7 +356,7 @@ class MassiveNeutrino(Fluid):
             Wavenumber (units: Mpc^{-1})
         tau_ini : float
             Initial conformal time (units: Mpc)
-        args : dict
+        args : mapping
             Cosmological parameters (params)
 
         Returns:
@@ -430,15 +432,17 @@ class MassiveNeutrino(Fluid):
             Derivative of metric eta
         y : array
             Current perturbation mode values
-        args : tuple
-            Background cosmology and cosmological parameters (BG, params)
+        args : PerturbationContext
+            Background cosmology, cosmological parameters, and the species
+            registry for coupled fluids (use ``args.BG``, ``args.params``,
+            ``args.species_list``, ``args.species_dict``)
 
         Returns:
         --------
         array
             Time derivatives of perturbation modes (units: 1/Mpc for kPsi1, else dimensionless)
         """
-        BG, params, _, _ = args
+        BG, params = args.BG, args.params
 
         a = jnp.exp(lna)
         T = params["T_nu_massive"] * params["TCMB0"] / a
@@ -508,7 +512,7 @@ class MassiveNeutrino(Fluid):
             Logarithm of scale factor
         y : array
             Perturbation mode values
-        args : dict
+        args : mapping
             Cosmological parameters (params)
 
         Returns:
@@ -549,7 +553,7 @@ class MassiveNeutrino(Fluid):
             Logarithm of scale factor
         y : array
             Perturbation mode values
-        args : dict
+        args : mapping
             Cosmological parameters (params)
 
         Returns:
@@ -588,7 +592,7 @@ class MassiveNeutrino(Fluid):
             Logarithm of scale factor
         y : array
             Perturbation mode values
-        args : dict
+        args : mapping
             Cosmological parameters (params)
 
         Returns:
