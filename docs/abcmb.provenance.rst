@@ -1,6 +1,6 @@
-abcmb.ABCMBTools module
+abcmb.provenance module
 =======================
 
-.. automodule:: abcmb.ABCMBTools
+.. automodule:: abcmb.provenance
    :members:
    :show-inheritance:

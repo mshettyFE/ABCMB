@@ -40,6 +40,23 @@ jobs:
       - name: Type check (pyright)
         run: uv run --extra dev pyright
 
+  docs:
+    runs-on: ubuntu-latest
+    env:
+      JAX_PLATFORM_NAME: "cpu"  # autodoc imports abcmb, which imports JAX
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      # -W turns Sphinx warnings into errors: stale autodoc references, orphaned
+      # pages, and broken cross-links fail CI instead of rotting silently.
+      - name: Build docs (warnings are errors)
+        run: uv run --extra docs sphinx-build -W -b html docs docs/_build/html
+
   build:
     runs-on: ubuntu-latest
     env:

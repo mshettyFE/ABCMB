@@ -23,7 +23,7 @@ The high-level organization of ABCMB is as follows:
    :align: center
    :width: 700px
 
-In most cases, the user will only need to initialize **abcmb.main.Model** and call **Model.run_cosmology** explicitly; the other modules will be called by this top-level function.
+In most cases, the user will only need to initialize a :class:`~abcmb.main.Model` (``from abcmb import Model``) and call it on a parameter dictionary — ``output = model(params)``; the other modules are called by this top-level entry point. Runs can also be driven from a TOML config file, via :func:`~abcmb.config.model_from_config` or the ``abcmb`` command-line tool.
 
 Examples
 --------

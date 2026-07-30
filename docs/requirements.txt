@@ -1,6 +1,0 @@
-# Base project dependencies
--r ../pytest_requirements.txt
-
-sphinx
-sphinx-rtd-theme
-myst-parser
