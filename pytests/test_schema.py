@@ -156,8 +156,16 @@ class _Fluid:
     Skip instantiating real Fluid since it's slow. API drift should be caught
     by the accuracy check"""
 
-    def __init__(self, name, is_matter=False, rho_early=0.0, rho_today=0.0):
+    def __init__(
+        self,
+        name,
+        is_matter=False,
+        rho_early=0.0,
+        rho_today=0.0,
+        is_neutrino=False,
+    ):
         self.name, self.is_matter = name, is_matter
+        self.is_neutrino = is_neutrino
         self._early, self._today = rho_early, rho_today
 
     def rho(self, lna, params):

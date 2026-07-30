@@ -211,10 +211,22 @@ class PerturbationEvolver(eqx.Module):
             * om
         )
 
-        all_fluid_ini = jnp.concatenate(
-            [p.y_ini(k, tau_ini, params) for p in self.species_list]
-        )
-        y_ini = jnp.concatenate((jnp.array([metric_eta_ini]), all_fluid_ini))
+        # Static  layout check: a species whose y_ini size
+        # disagrees with its declared num_equations would silently shift every
+        # later fluid's slice of y (the totals still add up, so nothing else
+        # errors)
+        pieces = []
+        for p in self.species_list:
+            piece = p.y_ini(k, tau_ini, params)
+            if piece.shape != (p.num_equations,):
+                raise ValueError(
+                    f"species '{p.name}' declares num_equations="
+                    f"{p.num_equations} but its y_ini returned shape "
+                    f"{piece.shape}; the perturbation vector layout would be "
+                    "misaligned."
+                )
+            pieces.append(piece)
+        y_ini = jnp.concatenate([jnp.array([metric_eta_ini])] + pieces)
 
         return y_ini
 
@@ -279,12 +291,17 @@ class PerturbationEvolver(eqx.Module):
         y_prime = jnp.array([metric_eta_prime])
         for i in range(len(self.species_list)):
             species = self.species_list[i]
-            y_prime = jnp.concatenate(
-                (
-                    y_prime,
-                    species.y_prime(k, lna, metric_h_prime, metric_eta_prime, y, args),
+            piece = species.y_prime(k, lna, metric_h_prime, metric_eta_prime, y, args)
+            # Same static layout check as in initial_conditions_one_k.
+            # OK since error on static data. Gets shaken out upon tracing
+            if piece.shape != (species.num_equations,):
+                raise ValueError(
+                    f"species '{species.name}' declares num_equations="
+                    f"{species.num_equations} but its y_prime returned shape "
+                    f"{piece.shape}; the perturbation vector layout would be "
+                    "misaligned."
                 )
-            )
+            y_prime = jnp.concatenate((y_prime, piece))
 
         return y_prime
 

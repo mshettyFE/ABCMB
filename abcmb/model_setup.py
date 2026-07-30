@@ -7,13 +7,15 @@ schema (options/params resolution, aliases, provenance) lives in
 :mod:`abcmb.schema`.
 """
 
+from collections.abc import Sequence
+
 import jax.numpy as jnp
 import numpy as np
 
 from . import species
 
 
-def populate_species(user_species, options):
+def populate_species(user_species: "Sequence[type[species.Fluid]] | None", options):
     species_list = ()
     species_dict = {}
 
@@ -25,29 +27,41 @@ def populate_species(user_species, options):
         species.MasslessNeutrino,
     )
 
-    i = 0
-    diffrax_vector_idx = 1
-
-    # Add baseline LCDM species if needed.
-    if options["use_LCDM_species"]:
-        for s in lcdm_species:
-            instance = s(
-                diffrax_vector_idx, options
-            )  # Creates an instance of s. init is now consistent across all species
-            species_list = species_list + (instance,)
-            species_dict[instance.name] = i
-
-            i += 1
-            diffrax_vector_idx += instance.num_equations
-
+    # Baseline LCDM species (if requested), then user species
+    selected = tuple(lcdm_species) if options["use_LCDM_species"] else ()
     if user_species is not None:
-        for s in user_species:
-            instance = s(diffrax_vector_idx, options)
-            species_list = species_list + (instance,)
-            species_dict[instance.name] = i
+        selected = selected + tuple(user_species)
 
-            i += 1
-            diffrax_vector_idx += instance.num_equations
+    diffrax_vector_idx = 1
+    for i, s in enumerate(selected):
+        # Classes, not instances: ABCMB instantiates each fluid itself so it
+        # can assign first_idx consistently with the other fluids present.
+        if not isinstance(s, type):
+            raise TypeError(
+                f"user_species entries must be Fluid classes, not instances "
+                f"(got a {type(s).__name__} instance); ABCMB instantiates "
+                "each fluid itself so it can assign first_idx."
+            )
+        instance = s(diffrax_vector_idx, options)
+        if instance.name in species_dict:
+            raise ValueError(
+                f"duplicate species name '{instance.name}': every fluid needs a "
+                "unique name -- coupling lookups (species_dict) and the "
+                "perturbation output tables are keyed by it."
+            )
+        species_list = species_list + (instance,)
+        species_dict[instance.name] = i
+        diffrax_vector_idx += instance.num_equations
+
+    # Required roles: the baryon-photon coupling (perturbations, background
+    # thermodynamics, recombination) references these two fluids by name.
+    for required in ("Baryon", "Photon"):
+        if required not in species_dict:
+            raise ValueError(
+                f"no fluid named '{required}': the baryon-photon coupling and "
+                "recombination require fluids named 'Baryon' and 'Photon' "
+                "(use use_LCDM_species=True, or include them in user_species)."
+            )
 
     return species_list, species_dict
 

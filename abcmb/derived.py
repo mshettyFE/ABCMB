@@ -80,7 +80,7 @@ def _neff_from_fluid_content(params, species):
         rho = s.rho(lna_early, params)
         if s.name == "Photon":
             rho_g += rho
-        elif "neutrino" in s.name.lower():
+        elif s.is_neutrino:
             rho_nu += rho
         else:
             rho_extra += rho
@@ -252,7 +252,7 @@ def _derive_densities(params, species):
     rho_nu = 0.0
     for s in species:
         rho_r += s.rho(jnp.log(a_early), params)
-        if "neutrino" in s.name.lower():
+        if s.is_neutrino:
             rho_nu += s.rho(jnp.log(a_early), params)
     params["omega_r"] = (
         rho_r * a_early**4 / (3 * cnst.H0_over_h**2 / 8 / jnp.pi / cnst.G)

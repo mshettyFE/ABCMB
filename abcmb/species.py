@@ -1,4 +1,5 @@
-# import abc
+from typing import ClassVar
+
 import equinox as eqx
 import jax.numpy as jnp
 from jax import config, lax, vmap
@@ -6,8 +7,6 @@ from jax import config, lax, vmap
 from . import constants as cnst
 
 config.update("jax_enable_x64", True)
-
-### ABSTRACT BASE CLASSES AND INTERFACES ###
 
 
 class Fluid(eqx.Module):
@@ -19,17 +18,26 @@ class Fluid(eqx.Module):
     Fields:
     -------
     first_idx : int
-        Default = 0
-        Position of the first perturbation equation in the Diffrax vector. For most fluids this is the density perturbation mode "delta".
+        Position of the first perturbation equation
+        in the Diffrax vector. For most fluids this is the density perturbation
+        mode "delta". Note slot 0 of the vector is reserved for the metric
+        perturbation eta, so fluid blocks start at index 1: in an assembled
+        model first_idx is never 0 (0 is only natural when testing a fluid
+        standalone, against a hand-built y with no metric slot).
     num_equations : int
-        Default = 0
-        Number of equations that need to be simultaneously evolved in the perturbations module.
+        Number of equations that need to be simultaneously evolved in the
+        perturbations module.
     name : str
-        Default = ""
-        Name of the fluid, used to find fluid and refer to it later in the computation using species_dict["name"].
+        Name of the fluid, used to find fluid and refer to it later
+        in the computation using species_dict["name"].
     is_matter : bool
+        Whether the fluid is non-relativistic today and contributes
+        towards the total matter power spectrum.
+    is_neutrino : bool
         Default = False
-        Whether the fluid is non-relativistic today and contributes towards the total matter power spectrum.
+        Sector flag, like is_matter: whether this species is counted in the
+        neutrino sector for the Neff / R_nu accounting in derive_parameters
+        (the derivation reads this flag, never the species' name).
 
     Methods:
     --------
@@ -43,17 +51,18 @@ class Fluid(eqx.Module):
         rho_plus_P_sigma : Compute standard shear perturbation (units: eV cm^{-3})
     """
 
-    first_idx: int = eqx.field(default=0, static=True)
-    num_equations: int = eqx.field(default=0, static=True)
-    name: str = eqx.field(default="", static=True)
-    is_matter: bool = eqx.field(
-        default=False, static=True
-    )  # Does the fluid contribute towards matter overdensity today.
+    # Every concrete species must provide these (catch early instead of at runtime)
+    name: eqx.AbstractVar[str]
+    is_matter: eqx.AbstractVar[bool]
+
+    # Sector flag like is_matter, but optional: neutrino-like species opt in.
+    is_neutrino: ClassVar[bool] = False
+
+    first_idx: int = eqx.field(static=True)
+    num_equations: int = eqx.field(static=True)
 
     def __init__(self, first_idx, options):
         self.first_idx = first_idx
-        self.name = ""
-        self.is_matter = False
 
     def rho(self, lna, args):
         """
@@ -456,10 +465,10 @@ class DarkEnergy(BackgroundFluid):
     """
 
     name = "DarkEnergy"
+    is_matter = False
 
     def __init__(self, first_idx, options):
         super().__init__(first_idx, options)
-        self.name = "DarkEnergy"
 
     def rho(self, lna, args):
         """
@@ -523,8 +532,6 @@ class ColdDarkMatter(StandardFluid):
 
     def __init__(self, first_idx, options):
         super().__init__(first_idx, options)
-        self.name = "ColdDarkMatter"
-        self.is_matter = True
 
     def rho(self, lna, args):
         """
@@ -636,10 +643,11 @@ class MasslessNeutrino(StandardFluid):
     """
 
     name = "MasslessNeutrino"
+    is_matter = False
+    is_neutrino = True
 
     def __init__(self, first_idx, options):
         super().__init__(first_idx, options)
-        self.name = "MasslessNeutrino"
         self.num_equations = options["l_max_massless_nu"] + 1
 
     def rho(self, lna, args):
@@ -855,12 +863,11 @@ class MassiveNeutrino(Fluid):
 
     name = "MassiveNeutrino"
     is_matter = True
+    is_neutrino = True
 
     def __init__(self, first_idx, options):
 
         super().__init__(first_idx, options)
-        self.name = "MassiveNeutrino"
-        self.is_matter = True
         self.num_ells_per_bin = options["l_max_massive_nu"] + 1
         self.num_equations = 3 * self.num_ells_per_bin
 
@@ -1277,8 +1284,6 @@ class Baryon(StandardFluid):
 
     def __init__(self, first_idx, options):
         super().__init__(first_idx, options)
-        self.name = "Baryon"
-        self.is_matter = True
 
     def rho(self, lna, args):
         """
@@ -1511,10 +1516,10 @@ class Photon(StandardFluid):
     num_F_ell_modes: int = eqx.field(default=0, static=True)
     num_G_ell_modes: int = eqx.field(default=0, static=True)
     name = "Photon"
+    is_matter = False
 
     def __init__(self, first_idx, options):
         super().__init__(first_idx, options)
-        self.name = "Photon"
         self.num_F_ell_modes = options["l_max_g"] + 1
         self.num_G_ell_modes = options["l_max_pol_g"] + 1
         self.num_equations = self.num_F_ell_modes + self.num_G_ell_modes

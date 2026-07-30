@@ -1,4 +1,5 @@
 import os
+from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 import diffrax
@@ -92,7 +93,7 @@ class Model(eqx.Module):
     ### ADDING SPECIES: add has_ parameter and add condition to append to tuple.
     # In the init, all species that are present within the model should be set to True.
     # All couplings present between species should be set to true.
-    def __init__(self, user_species=None, **kwargs):
+    def __init__(self, user_species: "Sequence[type[Fluid]] | None" = None, **kwargs):
         """
         Initialize Model instance.
 
