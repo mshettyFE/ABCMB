@@ -1,0 +1,127 @@
+"""
+Cold dark matter.
+"""
+
+import jax.numpy as jnp
+
+from .. import constants as cnst
+from .base import StandardFluid
+
+
+class ColdDarkMatter(StandardFluid):
+    """
+    Cold dark matter fluid species implementation.
+
+    Non-relativistic, pressureless dark matter with density
+    perturbations but no velocity or shear modes.
+
+    Methods:
+    --------
+    rho : Compute cold dark matter density (units: eV cm^{-3})
+    P : Compute cold dark matter pressure (units: eV cm^{-3})
+    y_ini : Compute initial perturbation conditions
+    y_prime : Compute perturbation time derivatives
+    """
+
+    name = "ColdDarkMatter"
+    num_equations = 1  # CDM only receives density perturbation in synchronous gauge.
+    is_matter = True
+
+    def __init__(self, first_idx, options):
+        super().__init__(first_idx, options)
+
+    def rho(self, lna, args):
+        """
+        Compute cold dark matter density.
+
+        Parameters:
+        -----------
+        lna : float
+            Logarithm of scale factor
+        args : dict
+            Cosmological parameters (params)
+
+        Returns:
+        --------
+        float
+            Cold dark matter density (units: eV cm^{-3})
+        """
+        params = args
+        return (
+            params["omega_cdm"]
+            * (3.0 * cnst.H0_over_h**2 / 8.0 / jnp.pi / cnst.G)
+            / jnp.exp(lna) ** 3
+        )
+
+    def P(self, lna, args):
+        """
+        Compute cold dark matter pressure.
+
+        Parameters:
+        -----------
+        lna : float
+            Logarithm of scale factor
+        args : dict
+            Cosmological parameters (params)
+
+        Returns:
+        --------
+        float
+            Cold dark matter pressure (units: eV cm^{-3})
+
+        Notes:
+        ------
+        Cold dark matter is pressureless, so this always returns zero.
+        """
+        return 0.0
+
+    def y_ini(self, k, tau_ini, args):
+        """
+        Compute initial conditions for cold dark matter perturbations.
+
+        Parameters:
+        -----------
+        k : float
+            Wavenumber (units: Mpc^{-1})
+        tau_ini : float
+            Initial conformal time (units: Mpc)
+        args : dict
+            Cosmological parameters (params)
+
+        Returns:
+        --------
+        array
+            Initial density perturbation (units: dimensionless)
+        """
+        params = args
+        delta = -((k * tau_ini) ** 2) / 4.0 * (1.0 - params["om"] * tau_ini / 5.0)
+        return jnp.array([delta])
+
+    def y_prime(self, k, lna, metric_h_prime, metric_eta_prime, y, args):
+        """
+        Compute time derivatives of cold dark matter perturbations.
+
+        Parameters:
+        -----------
+        k : float
+            Wavenumber (units: Mpc^{-1})
+        lna : float
+            Logarithm of scale factor
+        metric_h_prime : float
+            Derivative of metric h
+        metric_eta_prime : float
+            Derivative of metric eta
+        y : array
+            Current perturbation mode values
+        args : tuple
+            Background cosmology and cosmological parameters (BG, params) - Note: BG parameter is unused in this implementation
+
+        Returns:
+        --------
+        array
+            Time derivative of density perturbation (units: dimensionless)
+        """
+        return jnp.array([-0.5 * metric_h_prime])
+
+    def output_perturbations(self, lna, modes, args):
+        return {"delta": modes[self.first_idx]}

@@ -27,10 +27,15 @@ fluid to first-class:
   cannot carry a notebook class), and saved run files replay instead of
   failing the species drift check.
 
-Step 1: move the class into ``abcmb/species.py``
-------------------------------------------------
+Step 1: move the class into the ``abcmb/species/`` package
+-----------------------------------------------------------
 
-Copy the class from the notebook and place it with the other concrete species.
+Copy the class from the notebook into a new module under ``abcmb/species/``
+(one file per species; base classes live in ``base.py``), and re-export it in
+``abcmb/species/__init__.py`` (import + ``__all__`` entry). Coupled fluids
+find their partners at runtime through ``species_dict`` — never import a
+sibling species module.
+
 The base-class contracts are enforced, so an incomplete promotion fails loudly
 rather than subtly:
 
