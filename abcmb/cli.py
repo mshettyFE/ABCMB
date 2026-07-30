@@ -28,7 +28,7 @@ Reproduce a previous run (drift-checked automatically)::
 import argparse
 import warnings
 
-from . import config, provenance, schema, version
+from . import version
 
 
 def _parse_scalar_value(text):
@@ -124,8 +124,12 @@ def main(argv=None):
     parser = build_parser()
     args = parser.parse_args(argv)
 
-    # Discovery flag: print the parameter/option reference and exit (before any
-    # JAX import, so it stays instant like --help).
+    # Deferred until after parse_args: schema/config pull in JAX transitively,
+    # so --help/--version above stay instant -- and still work in an environment
+    # where JAX itself fails to import (broken jaxlib/CUDA).
+    from . import config, provenance, schema
+
+    # Discovery flag: print the parameter/option reference and exit.
     if args.list_params:
         print(schema.describe_reference())
         return 0
@@ -154,8 +158,9 @@ def main(argv=None):
     print(f"Resolved options:  {options}")
     print(f"Resolved params: {params}")
 
-    # 3. Run, capturing any warnings for the run file. Model/Output imports are
-    #    deferred so --help/--version stay fast (no JAX import).
+    # 3. Run, capturing any warnings for the run file. The Model import is
+    #    deferred further still: the discovery/replay paths above never pay for
+    #    the full solver stack (diffrax, equinox, LINX).
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         from .main import Model

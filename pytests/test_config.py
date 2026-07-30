@@ -120,3 +120,27 @@ def test_import_abcmb_stays_jax_free():
 
     code = "import abcmb, sys; assert 'jax' not in sys.modules"
     assert subprocess.run([sys.executable, "-c", code]).returncode == 0
+
+
+def test_cli_version_and_help_stay_jax_free():
+    # --version/--help must answer instantly and work even where JAX is broken:
+    # cli.py imports only `version` at module level and defers schema/config
+    # (which pull in JAX transitively) until after argparse has handled both.
+    import subprocess
+    import sys
+
+    code = (
+        "import sys\n"
+        "from abcmb import cli\n"
+        "assert 'jax' not in sys.modules  # importing the CLI module is light\n"
+        "for flag in ('--version', '--help'):\n"
+        "    try:\n"
+        "        cli.main([flag])\n"
+        "    except SystemExit as exc:\n"
+        "        assert exc.code == 0\n"
+        "assert 'jax' not in sys.modules  # neither flag reached the JAX import\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True
+    )
+    assert result.returncode == 0, result.stderr

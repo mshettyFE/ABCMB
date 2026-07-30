@@ -116,6 +116,7 @@ def dump_defaults() -> str:
         "Omitted (no fixed default):",
         f"  conditional inputs (supplied only when needed): {conditional}",
         f"  derived at runtime (computed, not inputs):      {derived}",
+        "NOTE: Providing derived values on the CLI will get overridden",
         "",
         "Usage:  abcmb --config defaults.toml -o out.npz",
         "        from abcmb.config import model_from_config",
