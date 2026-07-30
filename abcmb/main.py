@@ -198,7 +198,7 @@ class Model(eqx.Module):
         full_params = self.add_derived_parameters(params)
         return self.run_cosmology_abbr(full_params)
 
-    def run_cosmology_abbr(self, params: dict):
+    def run_cosmology_abbr(self, params: "Params"):
         """
         Compute CMB angular power spectra for given parameters.
 
@@ -253,7 +253,7 @@ class Model(eqx.Module):
         return self._run_post_recomb(params, pre_BG, recomb_output)
 
     @eqx.filter_jit
-    def get_BG_pre_recomb(self, params: dict):
+    def get_BG_pre_recomb(self, params: "Params"):
         """
         Pre-recomb stage: tabulate conformal time and bundle H, T, nH for recombination.
 
@@ -284,7 +284,7 @@ class Model(eqx.Module):
 
     @eqx.filter_jit
     def _run_post_recomb(
-        self, params: dict, pre_BG: "BackgroundPreRecomb", recomb_output
+        self, params: "Params", pre_BG: "BackgroundPreRecomb", recomb_output
     ):
         """
         Post-recombination stage: full Background construction (reionization,
@@ -321,7 +321,7 @@ class Model(eqx.Module):
         return output
 
     @eqx.filter_jit
-    def get_PTBG(self, params: dict, pre_BG: "BackgroundPreRecomb", recomb_output):
+    def get_PTBG(self, params: "Params", pre_BG: "BackgroundPreRecomb", recomb_output):
         """
         Get perturbation table and full Background.
 
@@ -346,7 +346,7 @@ class Model(eqx.Module):
         PT = self.PE.full_evolution((BG, params))
         return PT, BG
 
-    def get_BG(self, params: dict, pre_BG: "BackgroundPreRecomb", recomb_output):
+    def get_BG(self, params: "Params", pre_BG: "BackgroundPreRecomb", recomb_output):
         """
         Construct the full ``Background`` from pre-recomb + HyRex output.
 
@@ -435,4 +435,4 @@ class Output(eqx.Module):
     k: Array
     BG: background.Background
     PT: perturbations.PerturbationTable
-    params: dict
+    params: "Params"

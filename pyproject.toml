@@ -125,6 +125,11 @@ reportMissingModuleSource = false
 # filter_jit's backend passthrough kwarg (call), and jax.checkpoint's export gap.
 # The high-signal rules (reportGeneralTypeIssues / reportAttributeAccessIssue /
 # reportInvalidTypeForm) stay on to catch real typos.
+# Params is total=False by design (conditional inputs stay absent to signal
+# intent; derived keys are added in stages by derive_parameters), so "key may
+# be missing" on every access is noise. Key-NAME typos are still caught by
+# reportGeneralTypeIssues ("not a defined key").
+reportTypedDictNotRequiredAccess = "none"
 reportOperatorIssue = "none"
 reportArgumentType = "none"
 reportOptionalSubscript = "none"

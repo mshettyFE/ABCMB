@@ -39,6 +39,7 @@ Three pedagogical example notebooks demonstrating how to use ABCMB are available
    :caption: Contents:
 
    modules
+   promoting_a_fluid
    FAQ
 
    

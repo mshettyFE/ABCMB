@@ -8,14 +8,20 @@ schema (options/params resolution, aliases, provenance) lives in
 """
 
 from collections.abc import Sequence
+from typing import TYPE_CHECKING
 
 import jax.numpy as jnp
 import numpy as np
 
 from . import species
 
+if TYPE_CHECKING:
+    from ._schema_types import Options
 
-def populate_species(user_species: "Sequence[type[species.Fluid]] | None", options):
+
+def populate_species(
+    user_species: "Sequence[type[species.Fluid]] | None", options: "Options"
+):
     species_list = ()
     species_dict = {}
 

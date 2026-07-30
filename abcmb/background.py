@@ -1,5 +1,5 @@
 import os
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 import diffrax
 import equinox as eqx
@@ -23,6 +23,9 @@ from .hyrex import recomb_functions
 from .hyrex.array_with_padding import array_with_padding
 from .hyrex.hyrex import RecombInputs
 from .species import Fluid
+
+if TYPE_CHECKING:
+    from ._schema_types import Params
 
 file_dir = os.path.dirname(__file__)
 config.update("jax_enable_x64", True)
@@ -115,7 +118,7 @@ class BackgroundPreRecomb(eqx.Module):
             H_arr=vmap(self.H, in_axes=[0, None])(lna_axis, params),
         )
 
-    def rho_tot(self, lna, params):
+    def rho_tot(self, lna, params: "Params"):
         """
         Compute total energy density.
 
@@ -138,7 +141,7 @@ class BackgroundPreRecomb(eqx.Module):
             rho_tot += self.species_list[i].rho(lna, params)
         return rho_tot
 
-    def P_tot(self, lna, params):
+    def P_tot(self, lna, params: "Params"):
         """
         Compute total pressure.
 
@@ -161,7 +164,7 @@ class BackgroundPreRecomb(eqx.Module):
             P_tot += self.species_list[i].P(lna, params)
         return P_tot
 
-    def H(self, lna, params):
+    def H(self, lna, params: "Params"):
         """
         Compute Hubble parameter.
 
@@ -182,7 +185,7 @@ class BackgroundPreRecomb(eqx.Module):
         """
         return jnp.sqrt(8.0 * jnp.pi * cnst.G * self.rho_tot(lna, params) / 3.0)
 
-    def aH(self, lna, params):
+    def aH(self, lna, params: "Params"):
         """
         Compute conformal Hubble parameter.
 
@@ -203,7 +206,7 @@ class BackgroundPreRecomb(eqx.Module):
         """
         return jnp.exp(lna) * self.H(lna, params) / cnst.c_Mpc_over_s
 
-    def aH_prime(self, lna, params):
+    def aH_prime(self, lna, params: "Params"):
         """
         Compute derivative of conformal Hubble parameter.
 
@@ -233,7 +236,7 @@ class BackgroundPreRecomb(eqx.Module):
             / cnst.c_Mpc_over_s**2
         )
 
-    def d2adtau2_over_a(self, lna, params):
+    def d2adtau2_over_a(self, lna, params: "Params"):
         """
         Compute second derivative of scale factor.
 
@@ -277,7 +280,7 @@ class BackgroundPreRecomb(eqx.Module):
         params = args
         return 1.0 / self.aH(lna, params)
 
-    def _tabulate_conformal_time(self, params):
+    def _tabulate_conformal_time(self, params: "Params"):
         """
         Tabulate conformal time as function of ln(a).
 
@@ -382,7 +385,7 @@ class BackgroundPreRecomb(eqx.Module):
             lna, self.lna_tau_tab[0], self.lna_tau_tab[-1], self.tau_tab
         )
 
-    def nH(self, lna, params):
+    def nH(self, lna, params: "Params"):
         """
         Compute hydrogen number density.
 
@@ -412,7 +415,7 @@ class BackgroundPreRecomb(eqx.Module):
             / jnp.exp(lna) ** 3
         )
 
-    def TCMB(self, lna, params):
+    def TCMB(self, lna, params: "Params"):
         """
         Compute CMB temperature.
 
@@ -432,7 +435,7 @@ class BackgroundPreRecomb(eqx.Module):
         """
         return params["TCMB0"] / jnp.exp(lna)
 
-    def R_ratio_lna(self, lna, params):
+    def R_ratio_lna(self, lna, params: "Params"):
         """
         Compute baryon drag ratio.
 
@@ -544,7 +547,7 @@ class Background(BackgroundPreRecomb):
     lna_transfer_start: Array  # Time where transfer functions start integrating.
     lna_visibility_stop: Array  # Time to stop integrating T1, T2, and E sources due to small visibility functions. Only used for l<400
 
-    def __init__(self, pre_BG, recomb_output, params, ReionModel):
+    def __init__(self, pre_BG, recomb_output, params: "Params", ReionModel):
         """
         Initialize Background cosmology module.
 
@@ -658,7 +661,7 @@ class Background(BackgroundPreRecomb):
             ),
         )
 
-    def _Tm_early_approx(self, lna, params):
+    def _Tm_early_approx(self, lna, params: "Params"):
         """
         Compute matter temperature using post-equilibrium approximation.
 
@@ -685,7 +688,7 @@ class Background(BackgroundPreRecomb):
             / recomb_functions.Gamma_compton(xe, TCMB, params["YHe"])
         )
 
-    def Tm(self, lna, params):
+    def Tm(self, lna, params: "Params"):
         """
         Compute matter temperature.
 
@@ -721,7 +724,7 @@ class Background(BackgroundPreRecomb):
             ),
         )
 
-    def tau_c(self, lna, params):
+    def tau_c(self, lna, params: "Params"):
         """
         Compute Thomson scattering time.
 
@@ -744,7 +747,7 @@ class Background(BackgroundPreRecomb):
         ne = nH * self.xe(lna)
         return 1.0 / a / ne / cnst.thomson_xsec / cnst.c * cnst.c_Mpc_over_s
 
-    def _tabulate_optical_depth(self, params):
+    def _tabulate_optical_depth(self, params: "Params"):
         """
         Tabulate optical depth from given scale factor to today.
 
@@ -807,7 +810,7 @@ class Background(BackgroundPreRecomb):
         """
         return jnp.where(lna < -10.0, 0.0, jnp.exp(-self.kappa_func.evaluate(lna)))
 
-    def visibility(self, lna, params):
+    def visibility(self, lna, params: "Params"):
         """
         Compute visibility function.
 
@@ -887,7 +890,7 @@ class Background(BackgroundPreRecomb):
         rs_sorted = r_s[idx]
         return jnp.interp(z_d, z_sorted, rs_sorted)
 
-    def _tabulate_kappa_d(self, params):
+    def _tabulate_kappa_d(self, params: "Params"):
         """
         Tabulate baryon optical depth.
 
@@ -936,7 +939,7 @@ class Background(BackgroundPreRecomb):
         result = solution.ys[::-1]
         return result
 
-    def _tabulate_rs(self, params):
+    def _tabulate_rs(self, params: "Params"):
         """
         Tabulate sound horizon evolution.
 
@@ -984,7 +987,7 @@ class Background(BackgroundPreRecomb):
         result = solution.ys
         return result
 
-    def z_d(self, params):
+    def z_d(self, params: "Params"):
         """
         Compute baryon decoupling redshift.
 
@@ -1005,7 +1008,7 @@ class Background(BackgroundPreRecomb):
             1 / jnp.exp(self.lna_tau_tab) - 1, self._tabulate_kappa_d(params)
         )
 
-    def rs_d(self, params):
+    def rs_d(self, params: "Params"):
         """
         Compute sound horizon at decoupling.
 
@@ -1044,7 +1047,7 @@ class ReionizationModel(eqx.Module):
     z_reion: Array
     tau_reion: Array
 
-    def xe_reion(self, lna, z_reion, params):
+    def xe_reion(self, lna, z_reion, params: "Params"):
         """
         Passing in an lna array should get you the correct tanh patching based on the
         reionization parameter.
@@ -1069,7 +1072,7 @@ class ReionizationModel(eqx.Module):
 
         return xe_reion_H + xe_reion_HeII
 
-    def tau_reion_fn(self, z_reion, BG, params):
+    def tau_reion_fn(self, z_reion, BG, params: "Params"):
         lna_axis = jnp.linspace(-5.0, 0.0, 2000)
         xe_reion_correction = self.xe_reion(lna_axis, z_reion, params)
         # Free electron number density belonging only to reionized hydrogen.
@@ -1089,7 +1092,7 @@ class ReionizationModelFromZ(ReionizationModel):
     and simply returned.
     """
 
-    def __init__(self, BG, params):
+    def __init__(self, BG, params: "Params"):
         self.z_reion = params.get("z_reion", jnp.array(7.6711))
         self.tau_reion = self.tau_reion_fn(self.z_reion, BG, params)
 
@@ -1102,7 +1105,7 @@ class ReionizationModelFromTau(ReionizationModel):
     Then the appropriate tanh correction may be called and returned, as well as the inferred reionization redshift.
     """
 
-    def __init__(self, BG, params):
+    def __init__(self, BG, params: "Params"):
 
         def tau_target_fn(z_reion, args):
             target = args

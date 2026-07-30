@@ -1,4 +1,5 @@
 import os
+from typing import TYPE_CHECKING
 
 import diffrax
 import equinox as eqx
@@ -9,6 +10,9 @@ from jaxtyping import Array
 
 from . import constants as cnst
 from .species import Fluid
+
+if TYPE_CHECKING:
+    from ._schema_types import Options
 
 file_dir = os.path.dirname(__file__)
 jax.config.update("jax_enable_x64", True)
@@ -55,7 +59,7 @@ class PerturbationEvolver(eqx.Module):
     species_list: tuple[Fluid, ...]
     species_dict: dict
     k_axis_perturbations: Array
-    options: dict
+    options: "Options"
 
     adjoint: type[diffrax.AbstractAdjoint] = eqx.field(static=True)
 

@@ -2,17 +2,22 @@
 post-hoc validation/updating of parameter struct
 """
 
+from typing import TYPE_CHECKING
+
 import equinox as eqx
 import jax
 import jax.numpy as jnp
 
 from . import constants as cnst
+
+if TYPE_CHECKING:
+    from ._schema_types import Options, Params
 from .ABCMBTools import bilinear_interp
 from .linx import const as linxconst
 from .linx import thermo as linxThermo
 
 
-def _check_neutrino_input(params):
+def _check_neutrino_input(params: "Params"):
     """
     Enforce the ``Neff`` / ``N_nu_massless`` one-of (they are treated 1-to-1; see
     paper). A param-only invariant — no Model needed — so ``derive_parameters``
@@ -30,7 +35,7 @@ def _require(ok, message):
         raise ValueError(message)
 
 
-def _resolve_neutrino_input(params, options):
+def _resolve_neutrino_input(params: "Params", options: "Options"):
     """
     Check neutrino-input compatibility and apply the massless-neutrino fallback.
 
@@ -65,7 +70,7 @@ def _resolve_neutrino_input(params, options):
     return input_N, input_Neff
 
 
-def _neff_from_fluid_content(params, species):
+def _neff_from_fluid_content(params: "Params", species):
     """
     Case 1: the user gave the true massless-neutrino count -> infer Neff from the
     early-time fluid content, correcting for the late-time massive-neutrino
@@ -103,7 +108,7 @@ def _neff_from_fluid_content(params, species):
     )  # Add difference to massless sector.
 
 
-def _helium_from_table(params, parthenope_table):
+def _helium_from_table(params: "Params", parthenope_table):
     """Interpolate ``YHe`` from the PArthENoPE/CLASS sBBN table (Neff must be set)."""
     bbn = parthenope_table
     omegab_all = bbn[:, 0]
@@ -123,7 +128,7 @@ def _helium_from_table(params, parthenope_table):
     )
 
 
-def _helium_from_linx(params, linx_thermo, linx_abundance):
+def _helium_from_linx(params: "Params", linx_thermo, linx_abundance):
     """
     Run LINX BBN from ``Delta_Neff_init`` (+ optional ``tau_n_fac`` /
     ``nuclear_rates_q``): sets ``Neff``, ``T_nu_massless``, and ``YHe`` in place.
@@ -178,7 +183,7 @@ def _helium_from_linx(params, linx_thermo, linx_abundance):
 
 
 def _compute_helium_fraction(
-    params, options, parthenope_table, linx_thermo, linx_abundance
+    params: "Params", options: "Options", parthenope_table, linx_thermo, linx_abundance
 ):
     """
     Set ``params["YHe"]`` per the ``bbn_type`` backend (sBBN table, LINX, or leave
@@ -198,7 +203,7 @@ def _compute_helium_fraction(
     return False
 
 
-def _n_massless_from_neff(params, species):
+def _n_massless_from_neff(params: "Params", species):
     """
     Case 2: the user (or LINX) gave the total Neff -> subtract every
     non-massless-neutrino relativistic energy density and assign the remainder to
@@ -226,7 +231,7 @@ def _n_massless_from_neff(params, species):
     )
 
 
-def _derive_densities(params, species):
+def _derive_densities(params: "Params", species):
     """
     Derive the background densities from the fluid content: ``omega_m`` (+ ``R_b``),
     ``omega_r`` (+ ``R_nu``, at early times), the adiabatic-IC parameter ``om``, and
@@ -262,7 +267,9 @@ def _derive_densities(params, species):
         "omega_r is not positive (no radiation content?); R_nu/om would divide by "
         "zero -- check TCMB0 or the photon/neutrino species.",
     )
-    params["R_nu"] = rho_nu / rho_r  # neutrino fraction of radiation (adiabatic ICs)
+    # Neutrino fraction of radiation (adiabatic ICs); asarray keeps the stored
+    # value an Array even in the all-float edge case (identity on tracers).
+    params["R_nu"] = jnp.asarray(rho_nu / rho_r)
 
     # Omega_m / sqrt(Omega_r) * H0, in 1/Mpc (adiabatic IC parameter)
     params["om"] = (
@@ -282,14 +289,14 @@ def _derive_densities(params, species):
 
 
 def derive_parameters(
-    params,
-    options,
+    params: "Params",
+    options: "Options",
     species,
     *,
     parthenope_table,
     linx_thermo,
     linx_abundance,
-):
+) -> "Params":
     """
     Imperative cosmology derivation: orchestrate the derivation of every derived
     quantity from the schema-resolved input ``params``, the model ``options``, the
@@ -299,7 +306,8 @@ def derive_parameters(
     params["H0"] = jnp.array(params["h"] * cnst.H0_over_h)
     # tau_reion and z_reion are both schema-resolved; the physics reads whichever
     # the input_tau_reion option selects.
-    params["omega_Lambda"] = 0.0  # placeholder so DE density sums to ~0 in the loops
+    # Placeholder so DE density sums to ~0 in the loops (Array, per Params).
+    params["omega_Lambda"] = jnp.asarray(0.0)
 
     input_N, input_Neff = _resolve_neutrino_input(params, options)
     if input_N:
