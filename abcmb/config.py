@@ -79,14 +79,16 @@ def dump_defaults() -> str:
 
     Keys route to options vs params by *name* on load, so the table placement is
     cosmetic; each key is tagged ``(param)`` / ``(option)`` with its type and doc.
-    The conditional inputs with no fixed default (the neutrino one-of and the LINX
-    inputs) are omitted. The result is a valid ``--config`` — the starting point
-    printed by ``abcmb --dump-defaults``.
+    Entries with no fixed default (``UNSET``: conditional inputs and derived
+    quantities) are omitted. The result is a valid ``--config`` — the starting
+    point printed by ``abcmb --dump-defaults``.
     """
     groups_order, group_rows = [], {}
 
     def add(specs, tag):
         for spec in specs:
+            if spec.default is schema.UNSET:
+                continue  # no value to emit; listed in the header below
             group = str(spec.group)
             if group not in group_rows:
                 group_rows[group] = []
@@ -96,6 +98,13 @@ def dump_defaults() -> str:
     add(schema.PARAM_SCHEMA, "param")
     add(schema.OPTION_SCHEMA, "option")
 
+    conditional = " / ".join(
+        spec.name
+        for spec in schema.PARAM_SCHEMA
+        if spec.default is schema.UNSET and not spec.derived
+    )
+    derived = " / ".join(spec.name for spec in schema.PARAM_SCHEMA if spec.derived)
+
     doc = tomlkit.document()
     for line in (
         "ABCMB default configuration -- every option and parameter with its schema default.",
@@ -104,9 +113,9 @@ def dump_defaults() -> str:
         "`abcmb --config`) keys route to options vs params by *name*, so a key's table",
         "is purely for human readability; each key is tagged (param) or (option) below.",
         "",
-        "Omitted (no fixed default -- supplied only when needed, or computed at runtime):",
-        "  neutrino one-of: Neff / N_nu_massless / T_nu_massless",
-        "  LINX inputs:     Delta_Neff_init / tau_n_fac / nuclear_rates_q",
+        "Omitted (no fixed default):",
+        f"  conditional inputs (supplied only when needed): {conditional}",
+        f"  derived at runtime (computed, not inputs):      {derived}",
         "",
         "Usage:  abcmb --config defaults.toml -o out.npz",
         "        from abcmb.config import model_from_config",
@@ -160,20 +169,15 @@ def save_run(output, path, model, params, *, warnings=()):
     path : str
         Output path; a ``.npz`` suffix is added if missing.
     model : Model
-        The model that produced ``output`` (read for ``options_provenance``).
+        The model that produced ``output`` (read for ``raw_options``).
     params : dict
         The raw parameters passed to the model call.
     warnings : iterable[str], optional
         Warning messages to record in the run file.
     """
-    raw_options = {
-        key: prov.value
-        for key, prov in model.options_provenance.items()
-        if prov.source != schema.Source.DEFAULT
-    }
     run_data = {
         "environment": provenance.capture_environment(),
-        "options": raw_options,
+        "options": dict(model.raw_options),
         "params": dict(params),
         "warnings": list(warnings),
     }

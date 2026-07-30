@@ -74,8 +74,6 @@ def test_save_run_artifact(tmp_path):
     import numpy as np
     import tomlkit
 
-    from abcmb.schema import Provenance, Source
-
     output = types.SimpleNamespace(
         l=np.array([2, 3]),
         ClTT=np.array([1.0, 2.0]),
@@ -84,18 +82,13 @@ def test_save_run_artifact(tmp_path):
         k=np.array([0.01]),
         Pk=np.array([1e3]),
     )
-    model = types.SimpleNamespace(
-        options_provenance={
-            "l_max": Provenance(200, Source.USER),
-            "lensing": Provenance(False, Source.DEFAULT),  # default -> omitted
-        }
-    )
+    model = types.SimpleNamespace(raw_options={"l_max": 200})
     paths = config.save_run(output, str(tmp_path / "run"), model, {"omega_cdm": 0.12})
     assert paths == [str(tmp_path / "run.npz"), str(tmp_path / "run_run.toml")]
 
     with open(tmp_path / "run_run.toml", encoding="utf-8") as handle:
         data = tomlkit.load(handle).unwrap()
-    assert data["options"] == {"l_max": 200}  # user-set only; default omitted
+    assert data["options"] == {"l_max": 200}  # exactly what the user passed
     assert data["params"] == {"omega_cdm": 0.12}
     assert data["environment"]["abcmb_version"]  # a fresh stamp is present
 
@@ -116,4 +109,4 @@ def test_save_run_reads_declared_output_model_fields():
     assert {"l", "ClTT", "ClTE", "ClEE", "k", "Pk"} <= {
         f.name for f in dataclasses.fields(Output)
     }
-    assert "options_provenance" in {f.name for f in dataclasses.fields(Model)}
+    assert "raw_options" in {f.name for f in dataclasses.fields(Model)}

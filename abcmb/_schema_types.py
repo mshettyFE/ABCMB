@@ -52,8 +52,8 @@ class Options(TypedDict):
 
 class Params(TypedDict, total=False):
     """Resolved + derived cosmological parameters: keys mirror PARAM_SCHEMA
-    plus the managed/derived set. total=False because derived keys are added
-    in stages by derive_parameters."""
+    (inputs, conditional, derived). total=False because conditional/derived
+    keys are added in stages by derive_parameters."""
 
     h: Array
     omega_cdm: Array
@@ -78,9 +78,9 @@ class Params(TypedDict, total=False):
     tau_n_fac: Array
     nuclear_rates_q: Array
     H0: Array
+    omega_m: Array
     R_b: Array
+    omega_r: Array
     R_nu: Array
     om: Array
     omega_Lambda: Array
-    omega_m: Array
-    omega_r: Array

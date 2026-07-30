@@ -7,9 +7,7 @@ environment stamp. It deliberately does NOT attempt bit-for-bit reproduction:
 JAX/XLA output is not bit-stable across device / jaxlib / XLA flags, and physics
 runs typically happen in a dirty working tree. The goal is push-button re-run
 plus drift detection — so a surprising result is never silently blamed on physics
-when the code, a dependency, or the device actually changed. Per-key resolution
-provenance (default/user/alias/extra) is not persisted here; it stays available
-in memory via ``Model.options_provenance`` / ``Model.param_provenance``.
+when the code, a dependency, or the device actually changed.
 """
 
 import importlib.metadata

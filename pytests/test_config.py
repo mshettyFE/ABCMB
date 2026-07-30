@@ -67,7 +67,7 @@ def test_dump_defaults_roundtrips(tmp_path, capsys):
     # --dump-defaults prints valid TOML that load_config parses back to exactly the
     # schema defaults (routed by name), so the dumped config is faithful.
     from abcmb.cli import main
-    from abcmb.schema import OPTION_SCHEMA, PARAM_SCHEMA
+    from abcmb.schema import OPTION_SCHEMA, PARAM_SCHEMA, UNSET
 
     rc = main(["--dump-defaults"])
     out = capsys.readouterr().out
@@ -77,7 +77,8 @@ def test_dump_defaults_roundtrips(tmp_path, capsys):
     path.write_text(out)
     options, params, env = load_config(str(path))
     assert options == {s.name: s.default for s in OPTION_SCHEMA}
-    assert params == {s.name: s.default for s in PARAM_SCHEMA}
+    # UNSET rows (conditional/derived) have no dumpable default and are omitted.
+    assert params == {s.name: s.default for s in PARAM_SCHEMA if s.default is not UNSET}
     assert env is None
 
 

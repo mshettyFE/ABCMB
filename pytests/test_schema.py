@@ -1,6 +1,6 @@
 """
-Schema tests: option/param resolution (defaults, CLASS aliases, provenance) and the
-input-validation guards -- choices, bounds, the light kind check, the
+Schema tests: option/param resolution (defaults, CLASS aliases, passthrough) and
+the input-validation guards -- choices, bounds, the light kind check, the
 neutrino one-of / LINX-conflict checks, and the derived-cosmology guards.
 File-driven config loading, the CLI, and run-file reproducibility live in
 ``test_config.py``.
@@ -10,13 +10,13 @@ import warnings
 
 import pytest
 
-from abcmb.schema import Provenance, Source, resolve_options, resolve_params
+from abcmb.schema import resolve_options, resolve_params
 
 
 def test_resolve_options_defaults():
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        options, _ = resolve_options({})
+        options = resolve_options({})
     assert options["l_max"] == 2500
     assert options["lensing"] is False
     assert options["bbn_type"] == ""
@@ -24,17 +24,16 @@ def test_resolve_options_defaults():
     assert options["k_pivot"] == 0.05
 
 
-def test_resolve_options_provenance_sources():
+def test_resolve_options_aliases_and_extras():
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        options, prov = resolve_options({"l_max": 3000, "l_max_ur": 30, "foobar": 1})
-    assert prov["l_max"] == Provenance(3000, Source.USER)
-    assert prov["l_max_massless_nu"] == Provenance(30, Source.ALIAS, origin="l_max_ur")
-    assert prov["foobar"] == Provenance(1, Source.EXTRA)
-    assert prov["lensing"].source == Source.DEFAULT
+        options = resolve_options({"l_max": 3000, "l_max_ur": 30, "foobar": 1})
+    assert options["l_max"] == 3000
     # Alias actually sets the canonical spec (the old silent no-op bug).
     assert options["l_max_massless_nu"] == 30
     assert "l_max_ur" not in options
+    assert options["foobar"] == 1  # unrecognized passthrough (custom species)
+    assert options["lensing"] is False  # untouched default
 
 
 def test_unknown_option_warns_and_strict_raises():
@@ -55,21 +54,21 @@ def test_l_max_below_l_min_warns_and_strict_raises():
 def test_resolve_params_defaults_aliases_extras():
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        params, prov = resolve_params(
+        params = resolve_params(
             {"omega_cdm": 0.12, "N_ur": 3.044, "T_ncdm": 0.7, "N_idr": 0.3}
         )
-    assert prov["omega_cdm"] == Provenance(0.12, Source.USER)
-    assert prov["Neff"] == Provenance(3.044, Source.ALIAS, origin="N_ur")
-    assert prov["T_nu_massive"] == Provenance(0.7, Source.ALIAS, origin="T_ncdm")
-    assert prov["N_idr"] == Provenance(0.3, Source.EXTRA)
-    assert prov["h"].source == Source.DEFAULT
+    assert float(params["omega_cdm"]) == 0.12
+    assert float(params["T_nu_massive"]) == 0.7
+    assert float(params["N_idr"]) == 0.3  # unrecognized passthrough preserved
+    assert float(params["h"]) == 0.6736  # untouched default
     # CLASS alias is renamed to the canonical key; the alias name is gone.
     assert "Neff" in params and "N_ur" not in params
-    # Managed keys (Neff) are NOT auto-filled when the user omits them, so the
-    # add_derived_parameters intent checks still work.
+    assert float(params["Neff"]) == 3.044
+    # Conditional keys (Neff, ...; default=UNSET) are NOT auto-filled when the
+    # user omits them, so the add_derived_parameters intent checks still work.
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        params2, _ = resolve_params({})
+        params2 = resolve_params({})
     assert "Neff" not in params2 and "N_nu_massless" not in params2
     assert "h" in params2  # pure defaults ARE filled
 

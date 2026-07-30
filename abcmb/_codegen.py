@@ -54,23 +54,13 @@ def dump_types() -> str:
         "",
         "class Params(TypedDict, total=False):",
         '    """Resolved + derived cosmological parameters: keys mirror PARAM_SCHEMA',
-        "    plus the managed/derived set. total=False because derived keys are added",
-        '    in stages by derive_parameters."""',
+        "    (inputs, conditional, derived). total=False because conditional/derived",
+        '    keys are added in stages by derive_parameters."""',
         "",
     ]
-    # PARAM_SCHEMA inputs, then conditional (neutrino / LINX), then derived -- a
-    # deterministic order so the generated file is stable across runs.
-    param_keys = (
-        [spec.name for spec in schema.PARAM_SCHEMA]
-        + list(schema._NEUTRINO_INPUT_KEYS)
-        + list(schema._LINX_INPUT_KEYS)
-        + sorted(schema._DERIVED_PARAM_KEYS)
-    )
-    seen = set()
-    for name in param_keys:
-        if name not in seen:
-            seen.add(name)
-            lines.append(f"    {name}: Array")
+    # Schema order (inputs, then conditional, then derived) -- deterministic, so
+    # the generated file is stable across runs.
+    lines += [f"    {spec.name}: Array" for spec in schema.PARAM_SCHEMA]
     return "\n".join(lines) + "\n"
 
 

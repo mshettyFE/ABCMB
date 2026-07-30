@@ -8,71 +8,54 @@ Two kinds of input, split by a simple rule:
 From the CLI/config both are just KEY=VALUE, routed by name (see
 ``option_key_set``); the split is an internal boundary the front-end hides.
 
-Provides default resolution, CLASS-style aliases, light type checks, per-key
-provenance, human-readable listings, and the imperative ``derive_parameters``.
+Provides default resolution, CLASS-style aliases, light type checks,
+human-readable listings, and the imperative ``derive_parameters``.
 """
 
 import difflib
 import warnings
 from dataclasses import dataclass
-from enum import StrEnum
+from enum import StrEnum, auto
 from typing import TYPE_CHECKING, Any, cast
 
 import jax.numpy as jnp
 
 if TYPE_CHECKING:
-    # Compile-time only: _schema_types is a GENERATED type-checker artifact, so it
-    # is never imported at runtime -- the package (and the codegen that regenerates
-    # it) work even if the file is missing/stale. Annotations below quote the names.
     from ._schema_types import Options, Params
-
-
-class Source(StrEnum):
-    """Where a resolved value came from (see :class:`Provenance`)."""
-
-    DEFAULT = "default"  # schema default; the user did not supply this key
-    USER = "user"  # supplied by the user under its canonical name
-    ALIAS = "alias"  # supplied under an alias (original key in Provenance.origin)
-    EXTRA = "extra"  # unrecognized passthrough (custom-species escape hatch)
 
 
 class Group(StrEnum):
     """Display grouping for a schema row; organizes ``describe_schema`` output."""
 
-    SPECIES = "species"
-    INPUT = "input"
-    OUTPUT = "output"
-    BBN = "bbn"
-    HIERARCHY = "hierarchy"
-    K_GRID = "k_grid"
-    TRANSFER = "transfer"
-    PRIMORDIAL = "primordial"
-    REIONIZATION = "reionization"
-    COSMOLOGY = "cosmology"
-    NEUTRINOS = "neutrinos"
-    IC = "ic"
-    SOLVER = "solver"
-    SOURCE = "source"
-    MISC = "misc"
+    SPECIES = auto()
+    INPUT = auto()
+    OUTPUT = auto()
+    BBN = auto()
+    HIERARCHY = auto()
+    K_GRID = auto()
+    TRANSFER = auto()
+    PRIMORDIAL = auto()
+    REIONIZATION = auto()
+    COSMOLOGY = auto()
+    NEUTRINOS = auto()
+    IC = auto()
+    SOLVER = auto()
+    SOURCE = auto()
+    DERIVED = auto()
+    MISC = auto()
 
 
-@dataclass(frozen=True)
-class Provenance:
-    """
-    Where one resolved value came from.
+class _Unset:
+    """Sentinel type for :attr:`Spec.default`; see :data:`UNSET`."""
 
-    ``value`` is the raw supplied (or default) value; ``source`` is the kind; and
-    ``origin`` is the original key the user supplied when ``source`` is
-    :attr:`Source.ALIAS` (otherwise ``None``).
-    """
-
-    value: Any
-    source: Source
-    origin: str | None = None
+    def __repr__(self):
+        return "UNSET"
 
 
-# The return shape of the resolve helpers: (resolved values, per-key provenance).
-ResolveResult = tuple[dict[str, Any], dict[str, Provenance]]
+# Sentinel default for a Spec that is recognized but never auto-filled: its
+# absence from the resolved dict is meaningful (``params.get(...) is not None``
+# signals user intent to the imperative logic in ``derive_parameters``).
+UNSET = _Unset()
 
 
 @dataclass(frozen=True)
@@ -85,7 +68,10 @@ class Spec:
     name : str
         Canonical key.
     default : Any
-        Value used when the user does not supply this key.
+        Value used when the user does not supply this key. The sentinel
+        :data:`UNSET` declares a *conditional* entry: recognized (aliases, docs,
+        checks all apply) but never auto-filled, so its absence still signals
+        user intent downstream.
     kind : type
         Expected Python kind (``int``/``float``/``bool``/``str``). Used for a
         light, non-fatal type check and for documentation.
@@ -101,6 +87,11 @@ class Spec:
     bounds : tuple
         ``(minimum, maximum)`` for a numeric value, each ``None`` if unbounded.
         An out-of-range value warns (does not raise). Inclusive.
+    derived : bool
+        True for a quantity computed by ``derive_parameters``: declared here so a
+        user-supplied value is recognized (not flagged as a typo), but it is not a
+        model input and is excluded from the input listings. Implies
+        ``default=UNSET``.
     """
 
     name: str
@@ -111,6 +102,7 @@ class Spec:
     group: Group = Group.MISC
     choices: tuple = ()
     bounds: tuple = (None, None)
+    derived: bool = False
 
 
 # OPTION_SCHEMA: the source of truth for model configuration (options). Drives
@@ -499,8 +491,11 @@ def describe_schema(schema, indent="  ") -> str:
         lines.append(f"{indent}[{group}]")
         for spec in by_group[group]:
             alias = f"  (aliases: {', '.join(spec.aliases)})" if spec.aliases else ""
+            default = (
+                "(no fixed default)" if spec.default is UNSET else repr(spec.default)
+            )
             lines.append(
-                f"{indent}  {spec.name} = {spec.default!r} "
+                f"{indent}  {spec.name} = {default} "
                 f"[{spec.kind.__name__}]{alias}\n"
                 f"{indent}      {spec.doc}"
             )
@@ -512,17 +507,18 @@ def describe_reference() -> str:
     Full, human-readable parameter/option reference for ``abcmb --list-params``.
 
     Lists the declared cosmological parameters and model options (grouped, with
-    defaults / types / aliases / docs), plus the names of the conditional/BBN
-    parameters whose values are owned by the physics logic.
+    defaults / types / aliases / docs — conditional entries show "(no fixed
+    default)"), plus the names of the derived quantities computed at runtime.
     """
-    cond = ", ".join(sorted(_CONDITIONAL_PARAM_KEYS))
+    inputs = tuple(spec for spec in PARAM_SCHEMA if not spec.derived)
+    derived = ", ".join(spec.name for spec in PARAM_SCHEMA if spec.derived)
     return "\n".join(
         [
             "COSMOLOGICAL PARAMETERS  (set via KEY=VALUE or a config file)",
-            describe_schema(PARAM_SCHEMA),
+            describe_schema(inputs),
             "",
-            "  Also settable — defaults/values are set by the BBN and neutrino",
-            f"  logic:\n      {cond}",
+            "  Derived at runtime (computed by the model, not inputs):",
+            f"      {derived}",
             "",
             "MODEL / RUN OPTIONS  (set via KEY=VALUE or a config file)",
             describe_schema(OPTION_SCHEMA),
@@ -539,30 +535,24 @@ def _resolve(
     schema,
     *,
     aliases,
-    managed_keys=frozenset(),
     wrap=_identity,
     noun="key",
     strict=False,
-) -> ResolveResult:
+) -> dict[str, Any]:
     """
     Resolves ``input_dict`` against ``schema`` (a tuple of :class:`Spec`): applies
     ``aliases`` (warning on use), fills declared entries from user values or
-    defaults with a light type check, passes ``managed_keys`` through untouched
-    (recognized but not auto-filled, for the imperative logic to consume), and
-    preserves unknown keys as ``extra`` (warning, or raising if ``strict``).
-    ``wrap`` transforms every stored value (e.g. ``jnp.array`` for params);
-    ``noun`` labels the warnings ("option" / "parameter").
-
-    Returns ``(resolved, provenance)`` where ``provenance[key]`` is a
-    :class:`Provenance` (``value`` / ``source`` / ``origin``).
+    defaults with a light type check, and preserves unknown keys (warning, or
+    raising if ``strict``). Entries whose default is :data:`UNSET` are recognized
+    but never auto-filled, so ``.get(...) is not None`` intent checks work
+    downstream. ``wrap`` transforms every stored value (e.g. ``jnp.array`` for
+    params); ``noun`` labels the warnings ("option" / "parameter").
     """
     by_name = {spec.name: spec for spec in schema}
-    known = set(by_name) | set(aliases) | set(managed_keys)
+    known = set(by_name) | set(aliases)
 
     resolved = {}  # canonical -> raw value
-    origin = {}  # canonical -> original key as supplied
     out = {}
-    provenance = {}
     for key, value in input_dict.items():
         canonical = aliases.get(key, key)
         if canonical != key:
@@ -573,14 +563,6 @@ def _resolve(
             )
         if canonical in by_name:
             resolved[canonical] = value
-            origin[canonical] = key
-        elif canonical in managed_keys:
-            # Recognized input handled by the imperative logic; pass through.
-            out[canonical] = wrap(value)
-            if canonical != key:
-                provenance[canonical] = Provenance(value, Source.ALIAS, origin=key)
-            else:
-                provenance[canonical] = Provenance(value, Source.USER)
         else:
             msg = (
                 f"unrecognized {noun} '{key}'; it is passed through unused "
@@ -593,24 +575,17 @@ def _resolve(
                 raise ValueError(msg)
             warnings.warn(msg, stacklevel=3)
             out[key] = wrap(value)
-            provenance[key] = Provenance(value, Source.EXTRA)
 
     for spec in schema:
         if spec.name in resolved:
             value = resolved[spec.name]
             _check_value(spec, value)
             out[spec.name] = wrap(value)
-            if origin[spec.name] != spec.name:
-                provenance[spec.name] = Provenance(
-                    value, Source.ALIAS, origin=origin[spec.name]
-                )
-            else:
-                provenance[spec.name] = Provenance(value, Source.USER)
-        else:
+        elif spec.default is not UNSET:
             out[spec.name] = wrap(spec.default)
-            provenance[spec.name] = Provenance(spec.default, Source.DEFAULT)
+        # default is UNSET and not supplied: stays absent (absence = intent).
 
-    return out, provenance
+    return out
 
 
 def _check_option_consistency(options, strict=False):
@@ -625,15 +600,12 @@ def _check_option_consistency(options, strict=False):
         warnings.warn(msg, stacklevel=3)
 
 
-def resolve_options(
-    input_options, strict=False
-) -> tuple["Options", dict[str, Provenance]]:
+def resolve_options(input_options, strict=False) -> "Options":
     """
     Resolve user configuration against ``OPTION_SCHEMA``, returning the populated
-    options and per-key provenance. See :func:`_resolve` for the semantics.
-
+    options. See :func:`_resolve` for the semantics.
     """
-    options, provenance = _resolve(
+    options = _resolve(
         input_options,
         OPTION_SCHEMA,
         aliases=_alias_map(OPTION_SCHEMA),
@@ -641,14 +613,16 @@ def resolve_options(
         strict=strict,
     )
     _check_option_consistency(options, strict=strict)
-    return cast("Options", options), provenance
+    return cast("Options", options)
 
 
 # ---------------------------------------------------------------------------
-# Only the *unconditional pure defaults* live here. Parameters whose presence
-# signals user intent (Neff, N_nu_massless, T_nu_massless), or that are computed
-# (H0, omega_m, R_nu, ...), are handled imperatively in ``derive_parameters`` and
-# listed in ``_MANAGED_PARAM_KEYS`` below so they are recognized (not typos).
+# All parameter declarations live here. Three flavors in one table:
+#   * plain rows       -- unconditional pure defaults, auto-filled by _resolve;
+#   * default=UNSET    -- conditional inputs whose *absence* signals user intent
+#                         (values/defaults owned by ``derive_parameters``);
+#   * derived=True     -- computed by ``derive_parameters``; declared so a
+#                         supplied value is recognized, but not a model input.
 # ---------------------------------------------------------------------------
 PARAM_SCHEMA = (
     Spec(
@@ -787,57 +761,136 @@ PARAM_SCHEMA = (
         group=Group.COSMOLOGY,
         bounds=(0.0, 1.0),
     ),
+    # Conditional neutrino inputs: the Neff / N_nu_massless one-of (provide one
+    # or derive it); defaults are owned by derive_parameters.
+    Spec(
+        "Neff",
+        UNSET,
+        float,
+        "Effective relativistic species count (one-of with N_nu_massless).",
+        aliases=("N_ur",),
+        group=Group.NEUTRINOS,
+        bounds=(0.0, None),
+    ),
+    Spec(
+        "N_nu_massless",
+        UNSET,
+        float,
+        "Massless-neutrino count (one-of with Neff; default 3 - N_nu_massive).",
+        group=Group.NEUTRINOS,
+        bounds=(0.0, None),
+    ),
+    Spec(
+        "T_nu_massless",
+        UNSET,
+        float,
+        "Massless-neutrino temperature ratio to TCMB (default 0.71636856).",
+        group=Group.NEUTRINOS,
+        bounds=(0.0, None),
+    ),
+    # Conditional LINX BBN inputs (used only when bbn_type == 'linx').
+    Spec(
+        "Delta_Neff_init",
+        UNSET,
+        float,
+        "LINX: initial extra relativistic energy Delta Neff (default 0).",
+        group=Group.BBN,
+    ),
+    Spec(
+        "tau_n_fac",
+        UNSET,
+        float,
+        "LINX: neutron-lifetime scaling factor (default 1).",
+        group=Group.BBN,
+        bounds=(0.0, None),
+    ),
+    Spec(
+        "nuclear_rates_q",
+        UNSET,
+        object,
+        "LINX: per-reaction nuclear-rate perturbations (array; default zeros).",
+        group=Group.BBN,
+    ),
+    # Derived quantities — computed by derive_parameters, not user inputs.
+    Spec(
+        "H0",
+        UNSET,
+        float,
+        "Hubble rate today (h * H0_over_h).",
+        group=Group.DERIVED,
+        derived=True,
+    ),
+    Spec(
+        "omega_m",
+        UNSET,
+        float,
+        "Total matter density Omega_m h^2.",
+        group=Group.DERIVED,
+        derived=True,
+    ),
+    Spec(
+        "R_b",
+        UNSET,
+        float,
+        "Baryon fraction omega_b / omega_m.",
+        group=Group.DERIVED,
+        derived=True,
+    ),
+    Spec(
+        "omega_r",
+        UNSET,
+        float,
+        "Radiation density Omega_r h^2.",
+        group=Group.DERIVED,
+        derived=True,
+    ),
+    Spec(
+        "R_nu",
+        UNSET,
+        float,
+        "Neutrino fraction of the radiation density.",
+        group=Group.DERIVED,
+        derived=True,
+    ),
+    Spec(
+        "om",
+        UNSET,
+        float,
+        "Adiabatic-IC parameter Omega_m / sqrt(Omega_r) * H0, in 1/Mpc.",
+        group=Group.DERIVED,
+        derived=True,
+    ),
+    Spec(
+        "omega_Lambda",
+        UNSET,
+        float,
+        "Dark-energy density h^2 - omega_r - omega_m.",
+        group=Group.DERIVED,
+        derived=True,
+    ),
 )
-
-# Conditional inputs the user MAY supply but which are NOT auto-filled by
-# resolve_params — their defaults/values are owned by the neutrino and BBN logic
-# in derive_parameters. Two disjoint groups: the neutrino one-of
-# (provide-or-derive) and the LINX BBN inputs (used only when bbn_type=='linx').
-_NEUTRINO_INPUT_KEYS = ("Neff", "N_nu_massless", "T_nu_massless")
-_LINX_INPUT_KEYS = ("Delta_Neff_init", "tau_n_fac", "nuclear_rates_q")
-_CONDITIONAL_PARAM_KEYS = frozenset(_NEUTRINO_INPUT_KEYS + _LINX_INPUT_KEYS)
-# Derived quantities — computed by derive_parameters, not user inputs.
-_DERIVED_PARAM_KEYS = frozenset(
-    {"H0", "omega_Lambda", "omega_m", "R_b", "omega_r", "R_nu", "om"}
-)
-_MANAGED_PARAM_KEYS = _CONDITIONAL_PARAM_KEYS | _DERIVED_PARAM_KEYS
-
-# CLASS aliases for managed keys (schema-param aliases live on the Spec rows).
-_MANAGED_PARAM_ALIASES = {
-    "N_ur": "Neff",
-}
 
 
 def param_key_set() -> set[str]:
-    """Set of all recognized parameter keys (schema, managed, aliases)."""
-    return (
-        {spec.name for spec in PARAM_SCHEMA}
-        | _MANAGED_PARAM_KEYS
-        | set(_alias_map(PARAM_SCHEMA))
-        | set(_MANAGED_PARAM_ALIASES)
-    )
+    """Set of all recognized parameter keys: canonical names plus aliases."""
+    return {spec.name for spec in PARAM_SCHEMA} | set(_alias_map(PARAM_SCHEMA))
 
 
-def resolve_params(param_in, strict=False) -> tuple["Params", dict[str, Provenance]]:
+def resolve_params(param_in, strict=False) -> "Params":
     """
     Resolve raw cosmological parameters against ``PARAM_SCHEMA``, returning the
-    populated params and per-key provenance. See :func:`_resolve` for the
-    semantics.
+    populated params. See :func:`_resolve` for the semantics.
 
-    Values are wrapped in ``jnp.array``. Managed keys (conditional/derived; see
-    ``_MANAGED_PARAM_KEYS``) are passed through untouched for the imperative logic
-    in ``derive_parameters`` to consume — importantly, they are NOT auto-filled,
-    so ``params.get(...) is not None`` intent checks still work.
+    Values are wrapped in ``jnp.array``. Conditional/derived entries (declared
+    with ``default=UNSET``) are NOT auto-filled, so ``params.get(...) is not
+    None`` intent checks in ``derive_parameters`` still work.
     """
-    aliases = _alias_map(PARAM_SCHEMA)
-    aliases.update(_MANAGED_PARAM_ALIASES)
-    params, provenance = _resolve(
+    params = _resolve(
         param_in,
         PARAM_SCHEMA,
-        aliases=aliases,
-        managed_keys=_MANAGED_PARAM_KEYS,
+        aliases=_alias_map(PARAM_SCHEMA),
         wrap=jnp.array,
         noun="parameter",
         strict=strict,
     )
-    return cast("Params", params), provenance
+    return cast("Params", params)

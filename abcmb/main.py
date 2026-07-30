@@ -78,7 +78,7 @@ class Model(eqx.Module):
     SS: spectrum.SpectrumSolver
     RecModel: hyrex.recomb_model
     options: "Options"
-    options_provenance: dict
+    raw_options: dict
 
     species_list: tuple[Fluid, ...]
     species_dict: dict
@@ -113,10 +113,12 @@ class Model(eqx.Module):
         # tracing).
         adjoint = kwargs.pop("adjoint", diffrax.ForwardMode)
 
-        # Fill in all user defined and missing options parameters. resolve_options
-        # also returns per-key provenance (default / user / alias / extra),
-        # stored for run reproducibility and notebook introspection.
-        options, self.options_provenance = schema.resolve_options(kwargs)
+        # Keep the user's options exactly as supplied (keys as typed, defaults
+        # absent) — save_run records these so a run file replays user intent.
+        self.raw_options = dict(kwargs)
+
+        # Fill in all user defined and missing options parameters.
+        options = schema.resolve_options(kwargs)
         self.options = options
 
         # Populate all species
@@ -382,20 +384,10 @@ class Model(eqx.Module):
 
         return BG
 
-    def param_provenance(self, param_in):
-        """
-        Per-parameter provenance for a raw input dict.
-
-        Maps each parameter to a :class:`schema.Provenance` (value / source /
-        origin). Derived quantities (H0, omega_m, ...) are not included — they are
-        computed, not input.
-        """
-        return schema.resolve_params(param_in)[1]
-
     def add_derived_parameters(self, param_in: dict) -> "Params":
         # Resolve raw params against PARAM_SCHEMA (defaults, aliases, unknown-key
         # handling), then run the imperative cosmology derivation.
-        params, _ = schema.resolve_params(param_in)
+        params = schema.resolve_params(param_in)
         return derived.derive_parameters(
             params,
             self.options,
