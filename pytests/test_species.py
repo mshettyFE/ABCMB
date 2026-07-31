@@ -148,6 +148,28 @@ def test_options_key_set_is_stable(lcdm_model):
     assert "custom_knob" in lcdm_model.options  # escape hatch stays open
 
 
+def test_k_batch_strategy_option():
+    # The k-mode batching strategy is a declared option, not a backend sniff:
+    # explicit values are honored verbatim; 'auto' resolves by JAX backend
+    # (CI pins JAX_PLATFORM_NAME=cpu, so auto -> scan here).
+    from abcmb import perturbations, schema
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        options = schema.resolve_options({})
+    Strategy = perturbations.KBatchStrategy
+    assert options["k_batch_strategy"] == "auto"
+    assert perturbations._k_batch_strategy("scan") is Strategy.SCAN
+    assert perturbations._k_batch_strategy("VMAP") is Strategy.VMAP
+    assert perturbations._k_batch_strategy("auto") is Strategy.SCAN
+    # Schema warns at resolution (non-fatal choices)...
+    with pytest.warns(UserWarning, match=r"not one of.*Did you mean"):
+        schema.resolve_options({"k_batch_strategy": "vamp"})
+    # ...and an uninterpretable value fails loudly at use time.
+    with pytest.raises(ValueError, match="not one of 'auto', 'scan', 'vmap'"):
+        perturbations._k_batch_strategy("vamp")
+
+
 def test_is_neutrino_flags():
     # Opt-in trait: False unless a species declares itself neutrino-like. The
     # two neutrino classes opt in; nothing else does.

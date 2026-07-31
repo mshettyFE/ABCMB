@@ -81,15 +81,16 @@ R_tc = 0.0015   # (option, float) Tight-coupling threshold for IC start time.
 R_large = 0.07  # (option, float) Large-scale threshold for IC start time.
 
 [solver]
-max_steps_PE = 2048       # (option, int) Max diffrax steps for the perturbation evolver.
-k_split_PE = 0.01         # (option, float) k threshold splitting solver tolerances.
-rtol_small_k_PE = 1e-05   # (option, float) Relative tolerance, small k.
-rtol_large_k_PE = 0.0001  # (option, float) Relative tolerance, large k.
-atol_small_k_PE = 1e-10   # (option, float) Absolute tolerance, small k.
-atol_large_k_PE = 1e-06   # (option, float) Absolute tolerance, large k.
-pcoeff_PE = 0.25          # (option, float) PID controller P coefficient.
-icoeff_PE = 0.8           # (option, float) PID controller I coefficient.
-dcoeff_PE = 0.0           # (option, float) PID controller D coefficient.
+max_steps_PE = 2048        # (option, int) Max diffrax steps for the perturbation evolver.
+k_batch_strategy = "auto"  # (option, str) k-mode batching: 'scan' (sequential, minimal total work; best on CPU), 'vmap' (lockstep batch; best on GPU), 'auto' (pick by JAX backend). The two paths differ at solver-tolerance level (adaptive steps).
+k_split_PE = 0.01          # (option, float) k threshold splitting solver tolerances.
+rtol_small_k_PE = 1e-05    # (option, float) Relative tolerance, small k.
+rtol_large_k_PE = 0.0001   # (option, float) Relative tolerance, large k.
+atol_small_k_PE = 1e-10    # (option, float) Absolute tolerance, small k.
+atol_large_k_PE = 1e-06    # (option, float) Absolute tolerance, large k.
+pcoeff_PE = 0.25           # (option, float) PID controller P coefficient.
+icoeff_PE = 0.8            # (option, float) PID controller I coefficient.
+dcoeff_PE = 0.0            # (option, float) PID controller D coefficient.
 
 [source]
 scale_sw = 1   # (option, int) Sachs-Wolfe term switch/scale.

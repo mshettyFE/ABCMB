@@ -1,3 +1,10 @@
+"""
+Cosmological perturbation evolution module.
+
+Integrates linear perturbation equations for scalar modes across
+cosmic time using background cosmology and species interactions.
+"""
+
 import os
 from typing import TYPE_CHECKING
 
@@ -9,6 +16,7 @@ from jax import lax, vmap
 from jaxtyping import Array
 
 from . import constants as cnst
+from .schema import KBatchStrategy
 from .species import Baryon, Fluid, PerturbationContext, StandardFluid
 
 if TYPE_CHECKING:
@@ -17,12 +25,30 @@ if TYPE_CHECKING:
 file_dir = os.path.dirname(__file__)
 jax.config.update("jax_enable_x64", True)
 
-"""
-Cosmological perturbation evolution module.
 
-Integrates linear perturbation equations for scalar modes across
-cosmic time using background cosmology and species interactions.
-"""
+def _k_batch_strategy(value: str) -> KBatchStrategy:
+    """
+    Resolve the ``k_batch_strategy`` option to a concrete strategy.
+
+    'auto' picks by the JAX default backend: VMAP on GPU (lockstep batching
+    saturates throughput hardware; the wasted lanes are free), SCAN otherwise
+    (sequential modes each take exactly their own adaptive steps, minimizing
+    total work -- vmapping on CPU would make every mode pay for the stiffest
+    one's step count).
+    """
+    value = value.lower()
+    if value == "auto":
+        return (
+            KBatchStrategy.VMAP
+            if jax.default_backend() == "gpu"
+            else KBatchStrategy.SCAN
+        )
+    try:
+        return KBatchStrategy(value)
+    except ValueError:
+        raise ValueError(
+            f"k_batch_strategy={value!r} is not one of 'auto', 'scan', 'vmap'."
+        ) from None
 
 
 class PerturbationEvolver(eqx.Module):
@@ -104,14 +130,12 @@ class PerturbationEvolver(eqx.Module):
         BG, params = args
         lna = jnp.linspace(BG.lna_transfer_start, 0.0, 500)
 
-        # This scan function is only used if on CPU.
-        # For GPUs we vmap over the wavenumbers instead
         def scan_fun(_, ki):
             # evolution_one_k returns shape (Nlna, Ny)
             y = self.evolution_one_k(ki, lna, args)
             return None, y
 
-        if jax.default_backend() == "gpu":
+        if _k_batch_strategy(self.options["k_batch_strategy"]) is KBatchStrategy.VMAP:
             res = vmap(self.evolution_one_k, in_axes=[0, None, None])(
                 self.k_axis_perturbations, lna, args
             )
@@ -331,7 +355,6 @@ class PerturbationEvolver(eqx.Module):
             Dense solution object for interpolation
 
         """
-        ### DIFFRAX INTEGRATION ###
 
         lna_start = self.get_starting_time(
             k, args
@@ -384,8 +407,6 @@ class PerturbationEvolver(eqx.Module):
             args=(k, *args),
             adjoint=adjoint,
         )
-
-        ### END OF DIFFRAX INTEGRATION ###
 
         return sol.ys
 

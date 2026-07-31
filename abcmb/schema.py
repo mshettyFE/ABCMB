@@ -45,6 +45,14 @@ class Group(StrEnum):
     MISC = auto()
 
 
+class KBatchStrategy(StrEnum):
+    """Concrete k-mode batching strategies for the ``k_batch_strategy`` option
+    ('auto' is an option-level alias resolved by the perturbation evolver)."""
+
+    SCAN = auto()
+    VMAP = auto()
+
+
 class _Unset:
     """Sentinel type for :attr:`Spec.default`; see :data:`UNSET`."""
 
@@ -321,6 +329,16 @@ OPTION_SCHEMA = (
         "Max diffrax steps for the perturbation evolver.",
         group=Group.SOLVER,
         bounds=(1, None),
+    ),
+    Spec(
+        "k_batch_strategy",
+        "auto",
+        str,
+        "k-mode batching: 'scan' (sequential, minimal total work; best on CPU), "
+        "'vmap' (lockstep batch; best on GPU), 'auto' (pick by JAX backend). "
+        "The two paths differ at solver-tolerance level (adaptive steps).",
+        group=Group.SOLVER,
+        choices=("auto", *(str(c) for c in KBatchStrategy)),
     ),
     Spec(
         "k_split_PE",

@@ -36,6 +36,7 @@ class Options(TypedDict):
     R_tc: float
     R_large: float
     max_steps_PE: int
+    k_batch_strategy: str
     k_split_PE: float
     rtol_small_k_PE: float
     rtol_large_k_PE: float
