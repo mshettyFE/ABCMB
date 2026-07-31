@@ -215,6 +215,7 @@ class MasslessNeutrino(StandardFluid):
     def output_perturbations(
         self, lna: ArrayLike, modes: Array, args: OutputArgs
     ) -> dict[str, Array]:
+        """Output keys: ``delta``, ``theta``, ``sigma``."""
         return {
             "delta": modes[self.first_idx],
             "theta": modes[self.first_idx + 1],
@@ -651,6 +652,9 @@ class MassiveNeutrino(Fluid):
     def output_perturbations(
         self, lna: ArrayLike, modes: Array, args: OutputArgs
     ) -> dict[str, Array]:
+        """Output keys: ``delta``, ``theta``, ``sigma`` -- momentum-integrated
+        from the binned hierarchy, so directly comparable to the standard
+        fluid outputs."""
         BG, params = args
         rho = vmap(self.rho, in_axes=(0, None))(lna, params)  # (Nlna,)
         rhoP = rho + vmap(self.P, in_axes=(0, None))(lna, params)

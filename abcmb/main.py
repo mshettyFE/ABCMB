@@ -82,7 +82,7 @@ class Model(eqx.Module):
     raw_options: dict
 
     species_list: tuple[Fluid, ...]
-    species_dict: dict
+    species_dict: dict[str, int]
 
     PArthENoPE_CLASS_table: Array
     thermo_model_DNeff: BackgroundModel | None

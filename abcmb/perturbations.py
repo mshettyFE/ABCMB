@@ -9,7 +9,7 @@ from jax import lax, vmap
 from jaxtyping import Array
 
 from . import constants as cnst
-from .species import Fluid, PerturbationContext
+from .species import Baryon, Fluid, PerturbationContext, StandardFluid
 
 if TYPE_CHECKING:
     from ._schema_types import Options
@@ -57,7 +57,7 @@ class PerturbationEvolver(eqx.Module):
     """
 
     species_list: tuple[Fluid, ...]
-    species_dict: dict
+    species_dict: dict[str, int]
     k_axis_perturbations: Array
     options: "Options"
 
@@ -415,31 +415,35 @@ class PerturbationEvolver(eqx.Module):
 
         metric_eta = modes[0]
 
-        # Build per-species perturbation dicts first; theta_b_prime draws from them.
         species_perturbations = {
             s.name: s.output_perturbations(lna, modes, (BG, params))
             for s in self.species_list
         }
 
         # Baryon velocity derivative — backward-calculated from the Boltzmann equations.
-        # Requires Baryon and Photon objects for cs2 and the photon-baryon coupling R.
-        Baryon = self.species_list[self.species_dict["Baryon"]]
-        Photon = self.species_list[self.species_dict["Photon"]]
-        delta_b = species_perturbations["Baryon"]["delta"]
-        theta_b = species_perturbations["Baryon"]["theta"]
-        theta_g = species_perturbations["Photon"]["theta"]
+        # Requires the Baryon and Photon objects for cs2 and the coupling R.
+        baryon = self.species_list[self.species_dict["Baryon"]]
+        photon = self.species_list[self.species_dict["Photon"]]
+        # Structural requirements on the named roles (narrows the types; fails
+        # loudly at trace time for an incompatible replacement): the Baryon
+        # role needs cs2 and the standard layout, the Photon role the layout.
+        assert isinstance(baryon, Baryon)
+        assert isinstance(photon, StandardFluid)
+        delta_b = baryon.get_delta(lna, modes, params)
+        theta_b = baryon.get_theta(lna, modes, params)
+        theta_g = photon.get_theta(lna, modes, params)
 
         karr = k[None, :]
         a = jnp.exp(lna)[:, None]
         aH = BG.aH(lna, params)[:, None]
-        cs2 = Baryon.cs2(
+        cs2 = baryon.cs2(
             lna, PerturbationContext(BG, params, self.species_list, self.species_dict)
         )[:, None]
         R = (
             4.0
-            * Photon.rho(lna, params)[:, None]
+            * photon.rho(lna, params)[:, None]
             / 3.0
-            / Baryon.rho(lna, params)[:, None]
+            / baryon.rho(lna, params)[:, None]
         )
         tau_c = BG.tau_c(lna, params)[:, None]
 

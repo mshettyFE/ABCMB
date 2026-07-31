@@ -139,4 +139,5 @@ class ColdDarkMatter(StandardFluid):
     def output_perturbations(
         self, lna: ArrayLike, modes: Array, args: OutputArgs
     ) -> dict[str, Array]:
+        """Output keys: ``delta``."""
         return {"delta": modes[self.first_idx]}

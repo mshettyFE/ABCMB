@@ -259,6 +259,7 @@ class Baryon(StandardFluid):
     def output_perturbations(
         self, lna: ArrayLike, modes: Array, args: OutputArgs
     ) -> dict[str, Array]:
+        """Output keys: ``delta``, ``theta``."""
         return {
             "delta": modes[self.first_idx],
             "theta": modes[self.first_idx + 1],
