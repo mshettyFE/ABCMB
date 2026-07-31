@@ -7,6 +7,7 @@ import numpy as np
 from interpax import CubicSpline
 from jax import config, grad, lax, vmap
 from jaxtyping import Array
+from scipy.special import roots_legendre
 
 from . import ABCMBTools as tools
 
@@ -245,7 +246,11 @@ class SpectrumSolver(eqx.Module):
             self.lensing_ells_indices = jnp.arange(ell_idx_min, lensing_ell_idx_max + 1)
             # self.lensing_theta = jnp.linspace(0., jnp.pi/16., lensing_ellmax // 8) # Size recommended by CLASS
             num_mu = lensing_ellmax + 70
-            mu, w = tools.gauss_legendre_weights(num_mu)
+            # Fine to use scipy function here, since num_mu is static
+            # Hence, by the time the HLO graph is constructed, mu_np and w_np are
+            # constant arrays (re: they don't contribute nodes to the HLO graph)
+            mu_np, w_np = roots_legendre(num_mu)
+            mu, w = jnp.asarray(mu_np), jnp.asarray(w_np)
             self.lensing_mus = jnp.concatenate((mu, jnp.array([1.0])))
             self.lensing_ws = jnp.concatenate((w, jnp.array([0.0])))
         else:
