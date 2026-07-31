@@ -107,6 +107,11 @@ ignore = ["E741"]
 # Sphinx conf.py must manipulate sys.path before importing the package for
 # autodoc, so module-level imports legitimately follow other statements.
 "docs/conf.py" = ["E402"]
+# jaxtyping shape strings (Float[Array, "num_mu num_ell"]) are not forward
+# type references, but ruff parses them as such; jaxtyping's FAQ says to
+# disable F722 (pyright understands the annotations natively). Scoped to the
+# files using shaped annotations rather than turned off project-wide.
+"abcmb/ABCMBTools.py" = ["F722"]
 
 [tool.pyright]
 # Type-check ABCMB's own code; vendored companion codes (LINX, HyRex) and

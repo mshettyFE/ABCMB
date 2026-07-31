@@ -11,10 +11,35 @@ keeping it is.
 
 import jax
 import jax.numpy as jnp
+import numpy as np
+import pytest
 
-from abcmb.ABCMBTools import fast_interp
+from abcmb.ABCMBTools import d00, fast_interp, wigner_d_matrix
 
 XP_MIN, XP_MAX, N = 0.0, 10.0, 101
+
+
+def test_wigner_d00_matches_legendre():
+    # Exact identity: d^l_00(beta) = P_l(cos beta). Running eagerly also
+    # proves the l=0 boundary row (from d00's padding) generates no NaNs:
+    # jax_debug_nans (on in conftest) checks every primitive here, which the
+    # old blanket nan_to_num guard could not pass.
+    mu = jnp.linspace(-0.95, 0.95, 9)
+    ells = jnp.arange(2, 16)
+    out = np.asarray(d00(mu, ells))
+    for j, ell in enumerate(range(2, 16)):
+        coeffs = np.zeros(ell + 1)
+        coeffs[ell] = 1.0
+        ref = np.polynomial.legendre.legval(np.asarray(mu), coeffs)
+        assert np.allclose(out[:, j], ref, atol=1e-12)
+
+
+def test_wigner_invalid_ells_fails_loudly():
+    # ells below m is a usage error (sqrt(l^2 - m^2) goes NaN); the targeted
+    # boundary guards must not scrub it. With jax_debug_nans on (conftest),
+    # the NaN surfaces as an immediate FloatingPointError.
+    with pytest.raises(FloatingPointError):
+        wigner_d_matrix(jnp.linspace(-0.5, 0.5, 3), jnp.arange(1, 6), 3, 1)
 
 
 def test_fast_interp_exact_on_linear_data():

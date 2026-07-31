@@ -130,6 +130,36 @@ def test_accuracy_checker(h=0.6762):
         pytest.fail(f"accuracy_checks raised an exception: {e}")
 
 
+def test_l_min_agrees_with_default():
+    # l_min must only select which multipoles are returned -- it must not
+    # shift the internal contiguous ell axis that the Wigner-d recurrences
+    # and the raw-Cl spline are built on (anchored at ell=2 in
+    # SpectrumSolver.__init__). Before the anchoring fix, l_min=3 with
+    # lensing silently corrupted every lensed multipole, and the unlensed
+    # path returned Cl(ell+1) labeled as Cl(ell).
+    params = {
+        "h": 0.6762,
+        "omega_cdm": 0.1193,
+        "omega_b": 0.0225,
+        "A_s": 2.12424e-9,
+        "n_s": 0.9709,
+        "Neff": 3.044,
+        "YHe": 0.245,
+        "tau_reion": 0.0544,
+    }
+    outputs = {}
+    for l_min in (2, 3):
+        model = Model(l_min=l_min, l_max=300, lensing=True, k_max=0.2)
+        outputs[l_min] = model(params)
+
+    for name in ("ClTT", "ClTE", "ClEE"):
+        a = np.asarray(getattr(outputs[2], name))[1:]  # drop ell=2
+        b = np.asarray(getattr(outputs[3], name))
+        rel = np.max(np.abs(a - b)) / np.max(np.abs(a))
+        print(f"{name}: max scaled diff l_min=2 vs l_min=3 = {rel:.2e}")
+        assert rel <= 1e-10, f"{name}: l_min shifted the computed spectra ({rel:.2e})"
+
+
 def test_k_batch_strategies_agree():
     # The scan and vmap k-batching paths are different computations (vmap's
     # lockstep controller evaluates each mode at different adaptive steps than

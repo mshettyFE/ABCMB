@@ -136,9 +136,12 @@ class SpectrumSolver(eqx.Module):
     ells_indices : Array
         Indices into bessel_l_tab corresponding to ells
     lensing_ells : Array
-        Extended multipole range for lensing calculations
+        Internal contiguous multipole axis, always anchored at ell=2 (a
+        contract of the Wigner-d recurrences and the ``[ells - 2]`` output
+        slicing); extends 500 past ellmax when lensing is on. Used for the
+        raw-Cl spline in both the lensed and unlensed paths.
     lensing_ells_indices : Array
-        Indices into bessel_l_tab for lensing multipoles
+        Indices into bessel_l_tab for the lensing_ells raw-Cl evaluations
     lensing_mus : Array
         Used for lensing, the Gauss-Legendre quadrature roots for the correlation function -> Cl integral.
     lensing_ws : Array
@@ -234,16 +237,29 @@ class SpectrumSolver(eqx.Module):
 
         self.lensing = lensing
 
+        if ellmin < 2:
+            raise ValueError(
+                f"l_min must be >= 2 (the monopole and dipole are not "
+                f"computed, and bessel_l_tab starts at 2); got {ellmin}"
+            )
+
         self.ells = jnp.arange(ellmin, ellmax + 1)
         ell_idx_min = jnp.where(bessel_l_tab <= ellmin)[0][-1]
         ell_idx_max = jnp.where(bessel_l_tab >= ellmax)[0][0]
         self.ells_indices = jnp.arange(ell_idx_min, ell_idx_max + 1)
 
+        # The internal contiguous ell axis (lensing_ells) is anchored at
+        # exactly 2 regardless of ellmin: the Wigner-d recurrences
+        # (tools.d00/d1n/...) require consecutive ells starting at 2, the
+        # lensing correlation sums must run over the full multipole range,
+        # and get_Cl's `[self.ells - 2]` output slicing assumes it. ellmin
+        # only selects which ells are returned.
+        anchor_idx = jnp.where(bessel_l_tab <= 2)[0][-1]
         if self.lensing:
             lensing_ellmax = ellmax + 500
             lensing_ell_idx_max = jnp.where(bessel_l_tab >= lensing_ellmax)[0][0]
-            self.lensing_ells = jnp.arange(ellmin, lensing_ellmax + 1)
-            self.lensing_ells_indices = jnp.arange(ell_idx_min, lensing_ell_idx_max + 1)
+            self.lensing_ells = jnp.arange(2, lensing_ellmax + 1)
+            self.lensing_ells_indices = jnp.arange(anchor_idx, lensing_ell_idx_max + 1)
             # self.lensing_theta = jnp.linspace(0., jnp.pi/16., lensing_ellmax // 8) # Size recommended by CLASS
             num_mu = lensing_ellmax + 70
             # Fine to use scipy function here, since num_mu is static
@@ -254,8 +270,8 @@ class SpectrumSolver(eqx.Module):
             self.lensing_mus = jnp.concatenate((mu, jnp.array([1.0])))
             self.lensing_ws = jnp.concatenate((w, jnp.array([0.0])))
         else:
-            self.lensing_ells = self.ells
-            self.lensing_ells_indices = self.ells_indices
+            self.lensing_ells = jnp.arange(2, ellmax + 1)
+            self.lensing_ells_indices = jnp.arange(anchor_idx, ell_idx_max + 1)
             # self.lensing_theta = jnp.array([0.]) # Not needed
             self.lensing_mus = jnp.array([0.0])  # Not needed
             self.lensing_ws = jnp.array([0.0])  # Not needed
