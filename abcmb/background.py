@@ -211,7 +211,7 @@ class BackgroundPreRecomb(eqx.Module):
         Compute derivative of conformal Hubble parameter.
 
         Uses second Friedmann equation to compute d(aH)/d(ln a).
-        See Eq.(20) of arXiv:9506072.
+        See Eq. (20) of Ma & Bertschinger (1995), arXiv:astro-ph/9506072.
 
         Parameters:
         -----------

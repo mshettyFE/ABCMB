@@ -103,7 +103,9 @@ class Baryon(StandardFluid):
 
         Notes:
         ------
-        Adiabatic sound speed squared, taken from M&B Eq. (68).
+        Adiabatic sound speed squared, from Eq. (68) of Ma & Bertschinger
+        (1995), arXiv:astro-ph/9506072, with the baryon-temperature derivative
+        substituted analytically from the Compton-heating evolution equation.
         Although we can neglect the pressure, this term is important for perturbation growth
         during recombination. During reionization this cs2 is negative. This is not physical
         but it should not matter for cosmology.

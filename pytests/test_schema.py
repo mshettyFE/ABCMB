@@ -234,3 +234,14 @@ def test_n_massless_from_neff_guard():
         [_Fluid("Photon", rho_early=1.0), _Fluid("MasslessNeutrino", rho_early=1.0)],
     )
     assert float(valid["N_nu_massless"]) == pytest.approx(3.0, abs=0.05)
+
+
+def test_bbn_type_validation():
+    # The schema's choices check warns; interpretation refuses to guess: an
+    # uninterpretable bbn_type raises instead of silently meaning "no BBN".
+    from abcmb.derived import _bbn_type
+
+    assert _bbn_type({"bbn_type": "Table"}) == "table"  # case-insensitive
+    assert _bbn_type({"bbn_type": ""}) == ""
+    with pytest.raises(ValueError, match="bbn_type='tabel'"):
+        _bbn_type({"bbn_type": "tabel"})

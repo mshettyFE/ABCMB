@@ -130,4 +130,34 @@ def test_accuracy_checker(h=0.6762):
         pytest.fail(f"accuracy_checks raised an exception: {e}")
 
 
+def test_k_batch_strategies_agree():
+    # The scan and vmap k-batching paths are different computations (vmap's
+    # lockstep controller evaluates each mode at different adaptive steps than
+    # a solo solve), documented to agree at solver-tolerance level. CI runs on
+    # CPU where 'auto' always picks scan -- this is the only test exercising
+    # the vmap (GPU-default) path. Reduced l_max/k_max keep the doubled solve
+    # affordable.
+    params = {
+        "h": 0.6762,
+        "omega_cdm": 0.1193,
+        "omega_b": 0.0225,
+        "A_s": 2.12424e-9,
+        "n_s": 0.9709,
+        "Neff": 3.044,
+        "YHe": 0.245,
+        "tau_reion": 0.0544,
+    }
+    outputs = {}
+    for strategy in ("scan", "vmap"):
+        model = Model(l_max=300, k_max=0.2, k_batch_strategy=strategy)
+        outputs[strategy] = model(params)
+
+    for name in ("ClTT", "ClEE", "Pk"):
+        a = np.asarray(getattr(outputs["scan"], name))
+        b = np.asarray(getattr(outputs["vmap"], name))
+        rel = np.max(np.abs(a - b) / np.abs(a))
+        print(f"{name}: max rel scan-vs-vmap = {rel:.2e}")
+        assert rel <= 5e-3, f"{name}: scan/vmap paths disagree ({rel:.2e})"
+
+
 # print(test_accuracy_checker())

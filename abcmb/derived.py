@@ -35,6 +35,20 @@ def _require(ok, message):
         raise ValueError(message)
 
 
+def _bbn_type(options: "Options") -> str:
+    """
+    Normalized ``bbn_type`` ('', 'table', or 'linx'); raises on anything else
+    (the schema's choices check only warns -- an uninterpretable backend has no
+    sensible fallback, so refuse to guess).
+    """
+    value = options["bbn_type"].lower()
+    if value not in ("", "table", "linx"):
+        raise ValueError(
+            f"bbn_type={options['bbn_type']!r} is not one of '', 'table', 'linx'."
+        )
+    return value
+
+
 def _resolve_neutrino_input(params: "Params", options: "Options"):
     """
     Check neutrino-input compatibility and apply the massless-neutrino fallback.
@@ -50,10 +64,9 @@ def _resolve_neutrino_input(params: "Params", options: "Options"):
     input_Neff = params.get("Neff") is not None
     input_T_nu_massless = params.get("T_nu_massless") is not None
 
+    bbn_type = _bbn_type(options)
     # LINX computes Neff/T_nu_massless itself, so the user must not also supply them.
-    if (input_N or input_Neff or input_T_nu_massless) and options[
-        "bbn_type"
-    ].lower() == "linx":
+    if (input_N or input_Neff or input_T_nu_massless) and bbn_type == "linx":
         raise ValueError(
             "You have specified a value for N_nu_massless and/or Neff and/or "
             "T_nu_massless, but LINX instead expects 'Delta_Neff_init', which it "
@@ -61,7 +74,7 @@ def _resolve_neutrino_input(params: "Params", options: "Options"):
             "https://arxiv.org/abs/2408.14538."
         )
 
-    if not input_N and not input_Neff and options["bbn_type"].lower() != "linx":
+    if not input_N and not input_Neff and bbn_type != "linx":
         params["N_nu_massless"] = 3 - params["N_nu_massive"]
         input_N = True
 
@@ -190,7 +203,7 @@ def _compute_helium_fraction(
     the schema-resolved default for ""). Returns ``True`` when LINX has set
     ``Neff`` (so the caller must re-derive ``N_nu_massless``).
     """
-    bbn_type = options["bbn_type"].lower()
+    bbn_type = _bbn_type(options)
     if bbn_type == "table":
         # Neff must already be set (Case 1); used to interpolate YHe.
         _helium_from_table(params, parthenope_table)
