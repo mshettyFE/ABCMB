@@ -43,6 +43,44 @@ def test_missing_required_role_raises():
     assert {"Baryon", "Photon"} <= set(species_dict)
 
 
+def test_user_species_non_fluid_class_raises():
+    # A class that isn't a Fluid subclass used to pass the classes-not-
+    # instances guard and detonate downstream with unrelated errors
+    # (AttributeError on .name, or a constructor TypeError). It must fail
+    # here, with a message naming the actual mistake.
+    from abcmb import model_setup
+
+    class NotAFluid:
+        def __init__(self, first_idx, options):
+            pass
+
+    with pytest.raises(TypeError, match="does not inherit from Fluid"):
+        model_setup.populate_species((NotAFluid,), _options())
+
+
+def test_role_impostor_raises_at_construction():
+    # A fluid merely *named* 'Baryon' that isn't a species.Baryon used to be
+    # accepted here and only failed later, mid-trace, at the coupling
+    # isinstance asserts. The coupling requires the genuine subclass either
+    # way, so the check belongs at Model construction.
+    import warnings
+
+    from abcmb import model_setup, schema, species
+
+    class FakeBaryon(species.BackgroundFluid):
+        name = "Baryon"
+        is_matter = True
+
+        def rho(self, lna, params):
+            return params["omega_b"]
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        options = schema.resolve_options({"use_LCDM_species": False})
+    with pytest.raises(TypeError, match="'Baryon' is a FakeBaryon"):
+        model_setup.populate_species((FakeBaryon, species.Photon), options)
+
+
 def test_user_species_instance_raises():
     # user_species takes Fluid *classes*: ABCMB instantiates them itself to
     # assign first_idx. Passing an instance fails with an instructive message

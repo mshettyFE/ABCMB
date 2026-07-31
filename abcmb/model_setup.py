@@ -21,7 +21,21 @@ if TYPE_CHECKING:
 
 def populate_species(
     user_species: "Sequence[type[species.Fluid]] | None", options: "Options"
-):
+) -> "tuple[tuple[species.Fluid, ...], dict[str, int]]":
+    """
+    Instantiate the model's fluid stack: the baseline LCDM species (when
+    ``options["use_LCDM_species"]``) followed by ``user_species``, in order.
+
+    Entries must be Fluid *classes*, not instances -- ABCMB instantiates each
+    fluid itself so it can assign ``first_idx`` (the fluid's offset into the
+    diffrax state vector) cumulatively from the fluids registered before it.
+
+    Returns ``(species_list, species_dict)``, where ``species_dict`` maps
+    each fluid's unique ``name`` to its index in ``species_list``. Raises at
+    construction on non-Fluid entries, duplicate names, and missing or
+    impostor ``Baryon``/``Photon`` roles (the baryon-photon coupling requires
+    genuine subclasses; see docs/promoting_a_fluid.rst).
+    """
     species_list = ()
     species_dict = {}
 
@@ -38,6 +52,8 @@ def populate_species(
     if user_species is not None:
         selected = selected + tuple(user_species)
 
+    # Slot 0 of the diffrax state vector is the metric perturbation eta;
+    # fluid equations start at 1.
     diffrax_vector_idx = 1
     for i, s in enumerate(selected):
         # Classes, not instances: ABCMB instantiates each fluid itself so it
@@ -47,6 +63,12 @@ def populate_species(
                 f"user_species entries must be Fluid classes, not instances "
                 f"(got a {type(s).__name__} instance); ABCMB instantiates "
                 "each fluid itself so it can assign first_idx."
+            )
+        if not issubclass(s, species.Fluid):
+            raise TypeError(
+                f"user_species entries must be species.Fluid subclasses; got "
+                f"{s.__name__}, which does not inherit from Fluid "
+                "(see docs/promoting_a_fluid.rst)."
             )
         instance = s(diffrax_vector_idx, options)
         if instance.name in species_dict:
@@ -60,13 +82,25 @@ def populate_species(
         diffrax_vector_idx += instance.num_equations
 
     # Required roles: the baryon-photon coupling (perturbations, background
-    # thermodynamics, recombination) references these two fluids by name.
-    for required in ("Baryon", "Photon"):
+    # thermodynamics, recombination) references these two fluids by name
+    for required, role_cls in (
+        ("Baryon", species.Baryon),
+        ("Photon", species.Photon),
+    ):
         if required not in species_dict:
             raise ValueError(
                 f"no fluid named '{required}': the baryon-photon coupling and "
                 "recombination require fluids named 'Baryon' and 'Photon' "
                 "(use use_LCDM_species=True, or include them in user_species)."
+            )
+        found = species_list[species_dict[required]]
+        if not isinstance(found, role_cls):
+            raise TypeError(
+                f"the fluid named '{required}' is a {type(found).__name__}, "
+                f"not a species.{required} subclass: the baryon-photon "
+                f"coupling requires the real {required} interface. To "
+                f"customize it, subclass species.{required} "
+                "(see docs/promoting_a_fluid.rst)."
             )
 
     return species_list, species_dict
