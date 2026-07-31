@@ -8,8 +8,6 @@ from jax.scipy.special import factorial
 
 config.update("jax_enable_x64", True)
 
-### BEGINNING OF WIGNER ROTATION FOR LENSING ###
-
 
 def wigner_d_matrix(mu, ells, m, n):
     """
@@ -202,9 +200,6 @@ def d4n(mu, ells, n):
     return res_patched
 
 
-### END OF WIGNER ROTATION FOR LENSING ###
-
-
 ### LENSING INTEGRAL QUADRATURE METHODS ###
 def _pn_and_pnm1_scan(z, n):
     """
@@ -327,60 +322,3 @@ def fast_interp(x, xp_min, xp_max, fp):
     w_upper = i - i_lower
     w_lower = 1.0 - w_upper
     return w_lower * fp[i_lower] + w_upper * fp[i_upper]
-
-
-def bilinear_interp(x, y, z, xq, yq):
-    """
-    Bilinear interpolation on 2D regular grid.
-
-    Performs bilinear interpolation to evaluate function at query point
-    (xq, yq) given values on a regular 2D grid.
-
-    Parameters:
-    -----------
-    x : array
-        1D array of x-coordinates (must be sorted)
-    y : array
-        1D array of y-coordinates (must be sorted)
-    z : array
-        2D array of function values, shape (len(y), len(x))
-    xq : float
-        Query x-coordinate
-    yq : float
-        Query y-coordinate
-
-    Returns:
-    --------
-    float
-        Interpolated value at (xq, yq)
-
-    Notes:
-    ------
-    Uses standard bilinear interpolation formula with four nearest
-    grid points.
-    """
-    # find indices for x and y
-    ix = jnp.clip(jnp.searchsorted(x, xq) - 1, 0, x.size - 2)
-    iy = jnp.clip(jnp.searchsorted(y, yq) - 1, 0, y.size - 2)
-
-    # grid corner points
-    x0, x1 = x[ix], x[ix + 1]
-    y0, y1 = y[iy], y[iy + 1]
-
-    # fractional positions
-    tx = (xq - x0) / (x1 - x0)
-    ty = (yq - y0) / (y1 - y0)
-
-    # get z values
-    z00 = z[iy, ix]
-    z01 = z[iy, ix + 1]
-    z10 = z[iy + 1, ix]
-    z11 = z[iy + 1, ix + 1]
-
-    # bilinear interpolation
-    return (
-        (1 - tx) * (1 - ty) * z00
-        + tx * (1 - ty) * z01
-        + (1 - tx) * ty * z10
-        + tx * ty * z11
-    )

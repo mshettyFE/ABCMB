@@ -249,3 +249,31 @@ def test_bbn_type_validation():
     assert _bbn_type({"bbn_type": ""}) == ""
     with pytest.raises(ValueError, match="bbn_type='tabel'"):
         _bbn_type({"bbn_type": "tabel"})
+
+
+def test_sbbn_table_out_of_range_warns():
+    # Out-of-table YHe queries are extrapolated nuclear physics: warn (never
+    # raise -- wide-prior scans are legitimate), in range stays silent.
+    import jax.numpy as jnp
+    import numpy as np
+
+    from abcmb.derived import _helium_from_table
+
+    # Synthetic table with the hardcoded sBBN layout (13 x 701) and a linear
+    # YHe surface, so extrapolation is exactly reproducible.
+    n2, n1 = 13, 701
+    ob = np.linspace(0.005, 0.04, n1)
+    dn = np.linspace(-3.0, 3.0, n2)
+    yhe = 0.2 + 1.0 * np.tile(ob, n2) + 0.01 * np.repeat(dn, n1)
+    table = jnp.asarray(np.column_stack([np.tile(ob, n2), np.repeat(dn, n1), yhe]))
+
+    params = {"omega_b": jnp.asarray(0.022), "Neff": jnp.asarray(3.046)}
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")  # in range: must NOT warn
+        _helium_from_table(params, table)
+    assert float(params["YHe"]) == pytest.approx(0.2 + 0.022, rel=1e-12)
+
+    params = {"omega_b": jnp.asarray(0.05), "Neff": jnp.asarray(3.046)}  # > table max
+    with pytest.warns(UserWarning, match="outside the sBBN table"):
+        _helium_from_table(params, table)
+    assert float(params["YHe"]) == pytest.approx(0.2 + 0.05, rel=1e-10)  # linear extrap

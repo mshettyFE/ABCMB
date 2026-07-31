@@ -2,17 +2,18 @@
 post-hoc validation/updating of parameter struct
 """
 
+import warnings
 from typing import TYPE_CHECKING
 
 import equinox as eqx
 import jax
 import jax.numpy as jnp
+from jax.scipy.interpolate import RegularGridInterpolator
 
 from . import constants as cnst
 
 if TYPE_CHECKING:
     from ._schema_types import Options, Params
-from .ABCMBTools import bilinear_interp
 from .linx import const as linxconst
 from .linx import thermo as linxThermo
 
@@ -135,10 +136,32 @@ def _helium_from_table(params: "Params", parthenope_table):
     DNeff = DNeff_all[::n1]
     YHe_grid = YHe_all.reshape(n2, n1)
 
-    # last two args: user omega_b and (Neff - 3.046) (3.046 assumed by the table)
-    params["YHe"] = bilinear_interp(
-        omegab, DNeff, YHe_grid, params["omega_b"], params["Neff"] - 3.046
+    # Out-of-table policy: warn, then extrapolate. Extrapolated YHe is
+    # invented nuclear physics, but a hard error would break wide-prior scans;
+    dneff = params["Neff"] - 3.046
+    in_table = (
+        omegab[0] <= params["omega_b"] <= omegab[-1] and DNeff[0] <= dneff <= DNeff[-1]
     )
+    if not in_table:
+        warnings.warn(
+            f"(omega_b={float(params['omega_b']):.4g}, "
+            f"Neff-3.046={float(dneff):.3g}) is outside the sBBN table "
+            f"(omega_b in [{float(omegab[0]):.4g}, {float(omegab[-1]):.4g}], "
+            f"Delta Neff in [{float(DNeff[0]):.3g}, {float(DNeff[-1]):.3g}]); "
+            "YHe will be linearly extrapolated. Supply YHe directly "
+            "(bbn_type='') or use bbn_type='linx' for out-of-table models.",
+            stacklevel=2,
+        )
+
+    # Query at the user's omega_b and (Neff - 3.046) (3.046 assumed by the
+    # table). fill_value=None linearly extrapolates outside the tabulated
+    # rectangle (bitwise-matching the previous hand-rolled interpolator).
+    interp = RegularGridInterpolator(
+        (DNeff, omegab), YHe_grid, method="linear", bounds_error=False, fill_value=None
+    )
+    params["YHe"] = interp(
+        jnp.stack([params["Neff"] - 3.046, params["omega_b"]])[None, :]
+    )[0]
 
 
 def _helium_from_linx(params: "Params", linx_thermo, linx_abundance):
