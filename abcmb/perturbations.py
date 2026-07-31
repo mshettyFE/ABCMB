@@ -124,11 +124,15 @@ class PerturbationEvolver(eqx.Module):
 
         Notes:
         ------
-        Uses logarithmic k spacing from 10^-4 to ~0.5 Mpc^-1 with 100 points.
-        Time integration runs from early times to z=1 (lna=-ln(2)).
+        Time grid: ``lna_output_points`` points from the transfer start (set by
+        the ``transfer_start_threshold`` option via the background) to today.
+        The k grid is ``self.k_axis_perturbations``, built by
+        ``model_setup.get_k_axis_perturbations``.
         """
         BG, params = args
-        lna = jnp.linspace(BG.lna_transfer_start, 0.0, 500)
+        lna = jnp.linspace(
+            BG.lna_transfer_start, 0.0, self.options["lna_output_points"]
+        )
 
         def scan_fun(_, ki):
             # evolution_one_k returns shape (Nlna, Ny)

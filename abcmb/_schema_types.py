@@ -35,8 +35,11 @@ class Options(TypedDict):
     k_pivot: float
     R_tc: float
     R_large: float
+    transfer_start_threshold: float
     max_steps_PE: int
     k_batch_strategy: str
+    lna_output_points: int
+    lna_lensing_points: int
     k_split_PE: float
     rtol_small_k_PE: float
     rtol_large_k_PE: float

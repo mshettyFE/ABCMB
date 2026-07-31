@@ -153,6 +153,7 @@ class Model(eqx.Module):
             scale_isw=options["scale_isw"],
             scale_dop=options["scale_dop"],
             scale_pol=options["scale_pol"],
+            lna_lensing_points=options["lna_lensing_points"],
         )
 
         # Initialize recombination model.
@@ -370,11 +371,23 @@ class Model(eqx.Module):
 
         def get_BG_z_reion(args):
             params, pre_BG, recomb_output = args
-            return Background(pre_BG, recomb_output, params, ReionizationModelFromZ)
+            return Background(
+                pre_BG,
+                recomb_output,
+                params,
+                ReionizationModelFromZ,
+                transfer_start_threshold=self.options["transfer_start_threshold"],
+            )
 
         def get_BG_tau_reion(args):
             params, pre_BG, recomb_output = args
-            return Background(pre_BG, recomb_output, params, ReionizationModelFromTau)
+            return Background(
+                pre_BG,
+                recomb_output,
+                params,
+                ReionizationModelFromTau,
+                transfer_start_threshold=self.options["transfer_start_threshold"],
+            )
 
         BG = lax.cond(
             self.options["input_tau_reion"],

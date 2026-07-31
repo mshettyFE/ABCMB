@@ -547,7 +547,14 @@ class Background(BackgroundPreRecomb):
     lna_transfer_start: Array  # Time where transfer functions start integrating.
     lna_visibility_stop: Array  # Time to stop integrating T1, T2, and E sources due to small visibility functions. Only used for l<400
 
-    def __init__(self, pre_BG, recomb_output, params: "Params", ReionModel):
+    def __init__(
+        self,
+        pre_BG,
+        recomb_output,
+        params: "Params",
+        ReionModel,
+        transfer_start_threshold=0.008,
+    ):
         """
         Initialize Background cosmology module.
 
@@ -610,12 +617,16 @@ class Background(BackgroundPreRecomb):
         self.lna_visibility_stop = lna_vals[jnp.argmin((vis_vals - 1.0e-3) ** 2)]
         self.rA_rec = self.tau0 - self.tau(self.lna_rec)
 
-        # Find approximate early time when aH x tau_c = 0.008
+        # Find the approximate early time when aH * tau_c crosses the
+        # transfer_start_threshold option (tight coupling makes the transfer
+        # sources negligible before this).
         lna_vals = jnp.linspace(-15.0, -6.0, 5000)
         aH_tau_c_vals = vmap(self.aH, in_axes=[0, None])(lna_vals, params) * self.tau_c(
             lna_vals, params
         )
-        self.lna_transfer_start = lna_vals[jnp.argmin((aH_tau_c_vals - 0.008) ** 2)]
+        self.lna_transfer_start = lna_vals[
+            jnp.argmin((aH_tau_c_vals - transfer_start_threshold) ** 2)
+        ]
 
     ### RECOMBINATION RELATED ###
 

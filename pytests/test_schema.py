@@ -22,6 +22,10 @@ def test_resolve_options_defaults():
     assert options["bbn_type"] == ""
     assert options["scale_sw"] == 1
     assert options["k_pivot"] == 0.05
+    # lna-grid precision knobs (endpoints stay structural/derived)
+    assert options["lna_output_points"] == 500
+    assert options["lna_lensing_points"] == 500
+    assert options["transfer_start_threshold"] == 0.008
 
 
 def test_resolve_options_aliases_and_extras():

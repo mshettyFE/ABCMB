@@ -189,6 +189,7 @@ class SpectrumSolver(eqx.Module):
     scale_isw: float = 1.0
     scale_dop: float = 1.0
     scale_pol: float = 1.0
+    lna_lensing_points: int = eqx.field(default=500, static=True)
 
     def __init__(
         self,
@@ -202,6 +203,7 @@ class SpectrumSolver(eqx.Module):
         scale_isw=1,
         scale_dop=1,
         scale_pol=1,
+        lna_lensing_points=500,
     ):
         """
         Initialize CMB spectrum solver.
@@ -261,6 +263,7 @@ class SpectrumSolver(eqx.Module):
         self.scale_isw = scale_isw
         self.scale_dop = scale_dop
         self.scale_pol = scale_pol
+        self.lna_lensing_points = lna_lensing_points
 
     def primordial_spectrum(self, k, params):
         """
@@ -438,7 +441,7 @@ class SpectrumSolver(eqx.Module):
         # the where-mask that nan_to_num secretly expands to, which
         # propagated through BG.tau. Fix: substitute lna_safe everywhere,
         # then mask the result to 0 at the boundary.
-        lna_axis = jnp.linspace(BG.lna_rec, 0.0, 500)
+        lna_axis = jnp.linspace(BG.lna_rec, 0.0, self.lna_lensing_points)
         lna_floor = lna_axis[-2]
 
         def integrand_func(lna):

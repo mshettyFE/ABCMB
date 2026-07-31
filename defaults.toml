@@ -77,12 +77,15 @@ k_transfer_logstep = 170.0  # (option, float) Transfer-integration k-grid log st
 tau_rec_fid = 281.040565    # (option, float) Fiducial conformal time at recombination.
 
 [ic]
-R_tc = 0.0015   # (option, float) Tight-coupling threshold for IC start time.
-R_large = 0.07  # (option, float) Large-scale threshold for IC start time.
+R_tc = 0.0015                     # (option, float) Tight-coupling threshold for IC start time.
+R_large = 0.07                    # (option, float) Large-scale threshold for IC start time.
+transfer_start_threshold = 0.008  # (option, float) aH*tau_c value defining the transfer start time (smaller = earlier start; the initial conditions assume tight coupling).
 
 [solver]
 max_steps_PE = 2048        # (option, int) Max diffrax steps for the perturbation evolver.
 k_batch_strategy = "auto"  # (option, str) k-mode batching: 'scan' (sequential, minimal total work; best on CPU), 'vmap' (lockstep batch; best on GPU), 'auto' (pick by JAX backend). The two paths differ at solver-tolerance level (adaptive steps).
+lna_output_points = 500    # (option, int) Time-grid points of the perturbation output table (transfer start to today); source integrations interpolate from this grid.
+lna_lensing_points = 500   # (option, int) Time-grid points of the lensing-potential Cl integration (recombination to today; used only when lensing=True).
 k_split_PE = 0.01          # (option, float) k threshold splitting solver tolerances.
 rtol_small_k_PE = 1e-05    # (option, float) Relative tolerance, small k.
 rtol_large_k_PE = 0.0001   # (option, float) Relative tolerance, large k.

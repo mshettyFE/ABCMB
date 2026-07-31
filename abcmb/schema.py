@@ -321,6 +321,15 @@ OPTION_SCHEMA = (
         "Large-scale threshold for IC start time.",
         group=Group.IC,
     ),
+    Spec(
+        "transfer_start_threshold",
+        0.008,
+        float,
+        "aH*tau_c value defining the transfer start time (smaller = earlier "
+        "start; the initial conditions assume tight coupling).",
+        group=Group.IC,
+        bounds=(0.0, None),
+    ),
     # Perturbation-evolver (diffrax) settings
     Spec(
         "max_steps_PE",
@@ -339,6 +348,24 @@ OPTION_SCHEMA = (
         "The two paths differ at solver-tolerance level (adaptive steps).",
         group=Group.SOLVER,
         choices=("auto", *(str(c) for c in KBatchStrategy)),
+    ),
+    Spec(
+        "lna_output_points",
+        500,
+        int,
+        "Time-grid points of the perturbation output table (transfer start to "
+        "today); source integrations interpolate from this grid.",
+        group=Group.SOLVER,
+        bounds=(2, None),
+    ),
+    Spec(
+        "lna_lensing_points",
+        500,
+        int,
+        "Time-grid points of the lensing-potential Cl integration "
+        "(recombination to today; used only when lensing=True).",
+        group=Group.SOLVER,
+        bounds=(2, None),
     ),
     Spec(
         "k_split_PE",
