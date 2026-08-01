@@ -72,7 +72,7 @@ class Baryon(StandardFluid):
         ------
         Baryon pressure is neglected, standard practice for SM baryons;
         """
-        return jnp.zeros(jnp.shape(lna))
+        return 0.0
 
     def cs2(self, lna: ArrayLike, args: PerturbationContext) -> Array:
         """

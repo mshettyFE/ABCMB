@@ -106,6 +106,9 @@ class Fluid(eqx.Module):
          Calculates the energy density of the fluid species at a given
          cosmological epoch using the logarithm of the scale factor.
 
+        Contract: scalar-in, scalar-out -- write for a single lna and let
+        callers batch with jax.vmap (constants may return plain scalars).
+
         Returns:
             Energy density (units: eV cm^{-3})
         """
@@ -117,6 +120,8 @@ class Fluid(eqx.Module):
         """
         Calculates the pressure of the fluid species at a given
         cosmological epoch using the logarithm of the scale factor.
+
+        Contract: scalar-in, scalar-out (see rho).
 
         Returns:
             Pressure (units: eV cm^{-3})

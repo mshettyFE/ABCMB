@@ -160,9 +160,9 @@ class BackgroundPreRecomb(eqx.Module):
 
     def rho_tot(
         self,
-        lna: Float[Array, "*batch"] | float,
+        lna: Float[Array, ""] | float,
         params: "Params",
-    ) -> Float[Array, "*batch"]:
+    ) -> Float[Array, ""]:
         """
          Compute total energy density.
 
@@ -175,9 +175,9 @@ class BackgroundPreRecomb(eqx.Module):
 
     def P_tot(
         self,
-        lna: Float[Array, "*batch"] | float,
+        lna: Float[Array, ""] | float,
         params: "Params",
-    ) -> Float[Array, "*batch"]:
+    ) -> Float[Array, ""]:
         """
          Compute total pressure.
 
@@ -190,9 +190,9 @@ class BackgroundPreRecomb(eqx.Module):
 
     def H(
         self,
-        lna: Float[Array, "*batch"] | float,
+        lna: Float[Array, ""] | float,
         params: "Params",
-    ) -> Float[Array, "*batch"]:
+    ) -> Float[Array, ""]:
         """
         Compute Hubble parameter.
 
@@ -203,9 +203,9 @@ class BackgroundPreRecomb(eqx.Module):
 
     def aH(
         self,
-        lna: Float[Array, "*batch"] | float,
+        lna: Float[Array, ""] | float,
         params: "Params",
-    ) -> Float[Array, "*batch"]:
+    ) -> Float[Array, ""]:
         r"""
         Compute conformal Hubble parameter.
 
@@ -218,9 +218,9 @@ class BackgroundPreRecomb(eqx.Module):
 
     def aH_prime(
         self,
-        lna: Float[Array, "*batch"] | float,
+        lna: Float[Array, ""] | float,
         params: "Params",
-    ) -> Float[Array, "*batch"]:
+    ) -> Float[Array, ""]:
         """
         Compute derivative of conformal Hubble parameter.
 
@@ -243,9 +243,9 @@ class BackgroundPreRecomb(eqx.Module):
 
     def d2adtau2_over_a(
         self,
-        lna: Float[Array, "*batch"] | float,
+        lna: Float[Array, ""] | float,
         params: "Params",
-    ) -> Float[Array, "*batch"]:
+    ) -> Float[Array, ""]:
         """
         Compute second derivative of scale factor.
 
@@ -268,7 +268,7 @@ class BackgroundPreRecomb(eqx.Module):
         params = args
         return 1.0 / self.aH(lna, params)
 
-    def tau(self, lna: Float[Array, "*batch"] | float) -> Float[Array, "*batch"]:
+    def tau(self, lna: Float[Array, ""] | float) -> Float[Array, ""]:
         """
         Compute conformal time.
 
@@ -282,9 +282,9 @@ class BackgroundPreRecomb(eqx.Module):
 
     def nH(
         self,
-        lna: Float[Array, "*batch"] | float,
+        lna: Float[Array, ""] | float,
         params: "Params",
-    ) -> Float[Array, "*batch"]:
+    ) -> Float[Array, ""]:
         """
         Compute hydrogen number density.
 
@@ -305,9 +305,9 @@ class BackgroundPreRecomb(eqx.Module):
 
     def TCMB(
         self,
-        lna: Float[Array, "*batch"] | float,
+        lna: Float[Array, ""] | float,
         params: "Params",
-    ) -> Float[Array, "*batch"]:
+    ) -> Float[Array, ""]:
         """
         Compute CMB temperature.
 
@@ -318,9 +318,9 @@ class BackgroundPreRecomb(eqx.Module):
 
     def R_ratio_lna(
         self,
-        lna: Float[Array, "*batch"] | float,
+        lna: Float[Array, ""] | float,
         params: "Params",
-    ) -> Float[Array, "*batch"]:
+    ) -> Float[Array, ""]:
         """
         Calculates R = 3ρ_b/(4ρ_γ), the ratio of baryon to photon
         energy densities that appears in baryon drag calculations.
@@ -330,8 +330,8 @@ class BackgroundPreRecomb(eqx.Module):
         float
             Baryon drag ratio (units: dimensionless)
         """
-        rho_b = jnp.zeros(jnp.shape(lna))
-        rho_g = jnp.zeros(jnp.shape(lna))
+        rho_b = jnp.asarray(0.0)
+        rho_g = jnp.asarray(0.0)
 
         for s in self.species_list:
             if s.name == "Photon":
@@ -401,9 +401,9 @@ class Background(BackgroundPreRecomb):
         self.z_reion = reion_model.z_reion
         self.tau_reion = reion_model.tau_reion
 
-        xe_reion_correction = reion_model.xe_reion(
-            self.lna_xe_tab, self.z_reion, params
-        )
+        xe_reion_correction = vmap(
+            lambda l: reion_model.xe_reion(l, self.z_reion, params)
+        )(self.lna_xe_tab)
         self.xe_tab = xe_reion_correction + xe
 
         self.kappa_func = self._tabulate_optical_depth(params)
@@ -420,14 +420,14 @@ class Background(BackgroundPreRecomb):
         # transfer_start_threshold option (tight coupling makes the transfer
         # sources negligible before this).
         lna_vals = jnp.linspace(-15.0, -6.0, 5000)
-        aH_tau_c_vals = vmap(self.aH, in_axes=[0, None])(lna_vals, params) * self.tau_c(
-            lna_vals, params
+        aH_tau_c_vals = vmap(lambda l: self.aH(l, params) * self.tau_c(l, params))(
+            lna_vals
         )
         self.lna_transfer_start = lna_vals[
             jnp.argmin((aH_tau_c_vals - transfer_start_threshold) ** 2)
         ]
 
-    def xe(self, lna: Float[Array, "*batch"] | float) -> Float[Array, "*batch"]:
+    def xe(self, lna: Float[Array, ""] | float) -> Float[Array, ""]:
         """
         Compute free electron fraction.
 
@@ -444,9 +444,9 @@ class Background(BackgroundPreRecomb):
 
     def _Tm_early_approx(
         self,
-        lna: Float[Array, "*batch"] | float,
+        lna: Float[Array, ""] | float,
         params: "Params",
-    ) -> Float[Array, "*batch"]:
+    ) -> Float[Array, ""]:
         """
         Compute matter temperature using post-equilibrium approximation.
 
@@ -466,9 +466,9 @@ class Background(BackgroundPreRecomb):
 
     def Tm(
         self,
-        lna: Float[Array, "*batch"] | float,
+        lna: Float[Array, ""] | float,
         params: "Params",
-    ) -> Float[Array, "*batch"]:
+    ) -> Float[Array, ""]:
         """
         Compute matter temperature.
 
@@ -488,9 +488,9 @@ class Background(BackgroundPreRecomb):
 
     def tau_c(
         self,
-        lna: Float[Array, "*batch"] | float,
+        lna: Float[Array, ""] | float,
         params: "Params",
-    ) -> Float[Array, "*batch"]:
+    ) -> Float[Array, ""]:
         r"""
         Compute Thomson scattering time.
 
@@ -536,7 +536,6 @@ class Background(BackgroundPreRecomb):
         return sol
 
     def expmkappa(self, lna: Float[Array, ""] | float) -> Float[Array, ""]:
-        # Scalar-only (kappa_func.evaluate takes one time); vmap to batch.
         """
         Compute exp(-optical depth).
 
@@ -551,7 +550,6 @@ class Background(BackgroundPreRecomb):
         lna: Float[Array, ""] | float,
         params: "Params",
     ) -> Float[Array, ""]:
-        # Scalar-only (goes through expmkappa's dense evaluate); vmap to batch.
         r"""
         Compute visibility function.
 
@@ -728,13 +726,13 @@ class ReionizationModel(eqx.Module):
 
     def xe_reion(
         self,
-        lna: Float[Array, "*batch"] | float,
+        lna: Float[Array, ""] | float,
         z_reion: Float[Array, ""] | float,
         params: "Params",
-    ) -> Float[Array, "*batch"]:
+    ) -> Float[Array, ""]:
         """
-        Passing in an lna array should get you the correct tanh patching based on the
-        reionization parameter.
+        Scalar contract: evaluates one lna (batch with jax.vmap at the call
+        site); the tanh patching follows the reionization parameters.
         """
         fHe = params["YHe"] / 4 / (1 - params["YHe"])
         z = 1 / jnp.exp(lna) - 1
@@ -763,14 +761,16 @@ class ReionizationModel(eqx.Module):
         params: "Params",
     ) -> Float[Array, ""]:
         lna_axis = jnp.linspace(-5.0, 0.0, 2000)
-        xe_reion_correction = self.xe_reion(lna_axis, z_reion, params)
-        # Free electron number density belonging only to reionized hydrogen.
-        ne = BG.nH(lna_axis, params) * xe_reion_correction
-        Gamma = jnp.exp(lna_axis) * ne * cnst.thomson_xsec * cnst.c / cnst.c_Mpc_over_s
-        aH = BG.aH(lna_axis, params)
-        # Optical depth integrand
-        integrand = Gamma / aH
-        return jnp.trapezoid(integrand, lna_axis)
+
+        # Scalar optical-depth integrand, vmapped over the grid (the rho/P
+        # and background thermodynamics contract is scalar-in, scalar-out).
+        def integrand(lna):
+            # Free electron number density from reionized hydrogen only.
+            ne = BG.nH(lna, params) * self.xe_reion(lna, z_reion, params)
+            Gamma = jnp.exp(lna) * ne * cnst.thomson_xsec * cnst.c / cnst.c_Mpc_over_s
+            return Gamma / BG.aH(lna, params)
+
+        return jnp.trapezoid(vmap(integrand)(lna_axis), lna_axis)
 
 
 class ReionizationModelFromZ(ReionizationModel):

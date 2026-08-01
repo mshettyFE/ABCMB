@@ -212,7 +212,7 @@ def test_k_batch_strategy_option():
         perturbations._k_batch_strategy("vamp")
 
 
-def test_rho_P_follow_lna_shape(lcdm_model):
+def test_rho_P_scalar_contract(lcdm_model):
     # Contract: background rho/P return arrays of lna's shape
     import warnings
 
@@ -232,10 +232,14 @@ def test_rho_P_follow_lna_shape(lcdm_model):
                 "tau_reion": 0.0544,
             }
         )
-    probe = jnp.zeros((2, 3))
+    # Scalar contract: every species' rho/P at one lna is a scalar, so the
+    # species stack is always a clean (n_species,) -- ragged stacks and
+    # batch-axis collapse are unrepresentable. Batch via explicit vmap.
     for s in lcdm_model.species_list:
-        assert jnp.shape(s.rho(probe, params)) == (2, 3), f"{s.name}.rho"
-        assert jnp.shape(s.P(probe, params)) == (2, 3), f"{s.name}.P"
+        assert jnp.shape(s.rho(-1.0, params)) == (), f"{s.name}.rho"
+        assert jnp.shape(s.P(-1.0, params)) == (), f"{s.name}.P"
+    stack = jnp.asarray([s.rho(-1.0, params) for s in lcdm_model.species_list])
+    assert stack.shape == (len(lcdm_model.species_list),)
 
 
 def test_is_neutrino_flags():

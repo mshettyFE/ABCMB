@@ -78,12 +78,13 @@ def test_early_window_respects_rtol(bg_setup):
     )
 
 
-def test_rho_tot_follows_lna_shape(bg_setup):
-    # Aggregation must preserve lna's shape
+def test_rho_tot_scalar_contract(bg_setup):
+    # Scalar-in, scalar-out; batching is the caller's explicit vmap.
     _, full, pre, _ = bg_setup
-    probe = jnp.zeros((2, 3))
-    assert jnp.shape(pre.rho_tot(probe, full)) == (2, 3)
-    assert jnp.shape(pre.P_tot(probe, full)) == (2, 3)
+    assert jnp.shape(pre.rho_tot(-1.0, full)) == ()
+    assert jnp.shape(pre.P_tot(-1.0, full)) == ()
+    grid = jnp.linspace(-3.0, -1.0, 7)
+    assert jnp.shape(jax.vmap(lambda l: pre.rho_tot(l, full))(grid)) == (7,)
 
 
 def test_table_matches_converged_reference(bg_setup):

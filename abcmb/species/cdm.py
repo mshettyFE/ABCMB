@@ -74,9 +74,8 @@ class ColdDarkMatter(StandardFluid):
         Notes:
         ------
         Cold dark matter is pressureless, so this always returns zero
-        (shaped like lna, per the rho/P species contract).
         """
-        return jnp.zeros(jnp.shape(lna))
+        return 0.0
 
     def y_ini(self, k: ArrayLike, tau_ini: ArrayLike, args: FluidParams) -> Array:
         """

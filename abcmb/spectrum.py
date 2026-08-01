@@ -768,15 +768,15 @@ class SpectrumSolver(eqx.Module):
         ### TRANSFER FUNCTION ###
         # Background quantities, all Nlna 1D vectors
         tau0 = BG.tau0
-        tau = BG.tau(lna_axis)
+        tau = vmap(BG.tau)(lna_axis)
         g = vmap(BG.visibility, in_axes=[0, None])(lna_axis, params)
         g_prime = vmap(grad(BG.visibility, argnums=0), in_axes=[0, None])(
             lna_axis, params
         )  # Derivative of g w.r.t. lna
-        aH = BG.aH(lna_axis, params)
+        aH = vmap(BG.aH, in_axes=[0, None])(lna_axis, params)
         expmkappa = vmap(BG.expmkappa)(lna_axis)
         aH_dot = (
-            BG.aH_prime(lna_axis, params) * aH
+            vmap(BG.aH_prime, in_axes=[0, None])(lna_axis, params) * aH
         )  # Derivative of aH w.r.t. conformal time tau.
 
         # Keep a 1D alias of aH for the rolling-accumulator scan below.

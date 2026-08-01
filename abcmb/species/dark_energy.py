@@ -44,9 +44,8 @@ class DarkEnergy(BackgroundFluid):
             Dark energy density (units: eV cm^{-3})
         """
         params = args
-        return jnp.broadcast_to(
-            params["omega_Lambda"] * (3.0 * cnst.H0_over_h**2 / 8.0 / jnp.pi / cnst.G),
-            jnp.shape(lna),
+        return params["omega_Lambda"] * (
+            3.0 * cnst.H0_over_h**2 / 8.0 / jnp.pi / cnst.G
         )
 
     def P(self, lna: ArrayLike, args: FluidParams) -> Array | float:

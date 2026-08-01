@@ -184,14 +184,14 @@ class PerturbationEvolver(eqx.Module):
         lna_start_range = jnp.linspace(-20.0, -10.0, 10000)
 
         # a) τc/τh  →  f1(lna) = BG.tau_c * BG.aH
-        f1 = BG.tau_c(lna_start_range, params) * BG.aH(lna_start_range, params)
+        f1 = vmap(lambda l: BG.tau_c(l, params) * BG.aH(l, params))(lna_start_range)
         # invert f1(lna) = thr1  →  lna = interp(thr1, f1, lna_range)
         lna1 = jnp.interp(
             self.options["R_tc"], f1, lna_start_range
         )  # jnp.interp ends up being
         # faster than fast_interp through here
         # b) τh/τk  →  f2(lna) = k / BG.aH
-        f2 = k / BG.aH(lna_start_range, params)
+        f2 = k / vmap(lambda l: BG.aH(l, params))(lna_start_range)
         # invert f2(lna) = thr2
         lna2 = jnp.interp(self.options["R_large"], f2, lna_start_range)
 
@@ -460,17 +460,18 @@ class PerturbationEvolver(eqx.Module):
 
         karr = k[None, :]
         a = jnp.exp(lna)[:, None]
-        aH = BG.aH(lna, params)[:, None]
-        cs2 = baryon.cs2(
-            lna, PerturbationContext(BG, params, self.species_list, self.species_dict)
-        )[:, None]
+        # Background/species quantities on the output lna grid: all follow
+        # the scalar contract, so batching is an explicit vmap here.
+        ctx = PerturbationContext(BG, params, self.species_list, self.species_dict)
+        aH = vmap(lambda l: BG.aH(l, params))(lna)[:, None]
+        cs2 = vmap(lambda l: baryon.cs2(l, ctx))(lna)[:, None]
         R = (
             4.0
-            * photon.rho(lna, params)[:, None]
+            * vmap(lambda l: photon.rho(l, params))(lna)[:, None]
             / 3.0
-            / baryon.rho(lna, params)[:, None]
+            / vmap(lambda l: baryon.rho(l, params))(lna)[:, None]
         )
-        tau_c = BG.tau_c(lna, params)[:, None]
+        tau_c = vmap(lambda l: BG.tau_c(l, params))(lna)[:, None]
 
         theta_b_prime = (
             -theta_b
@@ -498,7 +499,8 @@ class PerturbationEvolver(eqx.Module):
 
                 if s.is_matter:
                     sum_rho_delta_m += rho_delta
-                    sum_rho_m += s.rho(lna, params)
+                    # Scalar contract: batch rho over the output grid.
+                    sum_rho_m += vmap(lambda l: s.rho(l, params))(lna)
 
         delta_m = sum_rho_delta_m / sum_rho_m[:, None]
 
