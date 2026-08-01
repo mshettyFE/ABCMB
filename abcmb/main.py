@@ -11,16 +11,12 @@ from jax import config, lax
 from jaxtyping import Array
 
 from . import background, derived, model_setup, perturbations, schema, spectrum
-from .background import (
-    Background,
-    BackgroundPreRecomb,
-    ReionizationModelFromTau,
-    ReionizationModelFromZ,
-)
+from .background import Background, BackgroundPreRecomb
 from .hyrex import hyrex
 from .linx.abundances import AbundanceModel
 from .linx.background import BackgroundModel
 from .linx.nuclear import NuclearRates
+from .reionization import ReionizationModelFromTau, ReionizationModelFromZ
 from .species import Fluid
 
 if TYPE_CHECKING:
