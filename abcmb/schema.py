@@ -233,6 +233,11 @@ OPTION_SCHEMA = (
         float,
         "Perturbation k-grid transition step.",
         group=Group.K_GRID,
+        # Effectively "> 0" (bounds are inclusive): 0 divides by zero in the
+        # tanh transition argument -- CLASS hard-rejects it (class_test in
+        # perturbations.c); here it degenerates to a sharp step with a 0/0
+        # NaN if a grid point lands exactly on k_rec.
+        bounds=(1.0e-300, None),
     ),
     Spec(
         "k_step_super_reduction",
@@ -240,6 +245,28 @@ OPTION_SCHEMA = (
         float,
         "Super-horizon step reduction factor.",
         group=Group.K_GRID,
+    ),
+    Spec(
+        "k_lensing_extension",
+        3.0e-1,
+        float,
+        "Extra k range beyond the CMB grid for lensing-kernel coverage, in "
+        "1/Mpc; calibrated for lensing_ellmax ~ 3000 -- increase for "
+        "l_max > 2500.",
+        group=Group.K_GRID,
+        bounds=(0.0, None),
+    ),
+    Spec(
+        "k_step_extension",
+        5.0e-3,
+        float,
+        "Linear step for the beyond-CMB k extension (lensing / user k_max), "
+        "in 1/Mpc -- absolute units, unlike k_step_sub/super (units of "
+        "k_rec).",
+        group=Group.K_GRID,
+        # Effectively "> 0" (bounds are inclusive): 0 would hang the
+        # extension loops; also hard-guarded by _check_k_step there.
+        bounds=(1.0e-300, None),
     ),
     Spec(
         "k_min_tau0",
@@ -259,7 +286,7 @@ OPTION_SCHEMA = (
         "H0_fid",
         2.255560e-04,
         float,
-        "Fiducial H0 for k-grid scaling.",
+        "Fiducial H0 for k-grid scaling, in 1/Mpc (c=1): 100*h/c with h=0.6762.",
         group=Group.K_GRID,
     ),
     Spec(

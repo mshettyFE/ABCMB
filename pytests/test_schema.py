@@ -104,6 +104,10 @@ def test_bounds_validation():
         resolve_params({"YHe": 1.5})
     with pytest.warns(UserWarning, match="below the minimum"):
         resolve_options({"k_max": -1.0})
+    # k_step_transition = 0 divides by zero in the tanh transition argument
+    # (CLASS hard-rejects it); the exclusive-zero floor must catch exactly 0.
+    with pytest.warns(UserWarning, match="below the minimum"):
+        resolve_options({"k_step_transition": 0.0})
 
 
 def test_check_value_kind():

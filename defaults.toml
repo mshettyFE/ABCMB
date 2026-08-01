@@ -65,9 +65,11 @@ k_step_sub = 0.05             # (option, float) Perturbation k-grid step, sub-ho
 k_step_super = 0.002          # (option, float) Perturbation k-grid step, super-horizon.
 k_step_transition = 0.2       # (option, float) Perturbation k-grid transition step.
 k_step_super_reduction = 0.1  # (option, float) Super-horizon step reduction factor.
+k_lensing_extension = 0.3     # (option, float) Extra k range beyond the CMB grid for lensing-kernel coverage, in 1/Mpc; calibrated for lensing_ellmax ~ 3000 -- increase for l_max > 2500.
+k_step_extension = 0.005      # (option, float) Linear step for the beyond-CMB k extension (lensing / user k_max), in 1/Mpc -- absolute units, unlike k_step_sub/super (units of k_rec).
 k_min_tau0 = 0.1              # (option, float) Minimum k*tau0 for the perturbation grid.
 k_max_tau0_over_l_max = 1.8   # (option, float) Max k*tau0 / l_max for the perturbation grid.
-H0_fid = 0.000225556          # (option, float) Fiducial H0 for k-grid scaling.
+H0_fid = 0.000225556          # (option, float) Fiducial H0 for k-grid scaling, in 1/Mpc (c=1): 100*h/c with h=0.6762.
 tau0_fid = 14186.68           # (option, float) Fiducial conformal time today for k-grid scaling.
 rs_rec_fid = 144.6279         # (option, float) Fiducial sound horizon at recombination.
 

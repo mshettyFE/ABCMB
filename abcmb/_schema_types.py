@@ -24,6 +24,8 @@ class Options(TypedDict):
     k_step_super: float
     k_step_transition: float
     k_step_super_reduction: float
+    k_lensing_extension: float
+    k_step_extension: float
     k_min_tau0: float
     k_max_tau0_over_l_max: float
     H0_fid: float
