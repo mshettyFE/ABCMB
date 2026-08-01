@@ -18,7 +18,8 @@ from .base import (
 )
 from .cdm import ColdDarkMatter
 from .dark_energy import DarkEnergy
-from .neutrinos import MassiveNeutrino, MasslessNeutrino
+from .massive_neutrino import MassiveNeutrino
+from .massless_neutrino import MasslessNeutrino
 from .photon import Photon
 
 __all__ = [

@@ -289,6 +289,41 @@ def test_rho_P_scalar_contract(lcdm_model):
     assert stack.shape == (len(lcdm_model.species_list),)
 
 
+def test_massive_nu_quadrature_stencils():
+    # The stencils are CAMB's tuned arrays, exactly, carried as static
+    # instance fields (hashable, so they participate in the jit cache key),
+    # and they size the ODE state.
+    from abcmb import species
+    from abcmb.species.massive_neutrino import (
+        _CAMB_Q_BG,
+        _CAMB_Q_PERT,
+        _CAMB_W_BG,
+        _CAMB_W_PERT,
+    )
+
+    mn = species.MassiveNeutrino(1, _options())
+    assert mn.q_pert == _CAMB_Q_PERT and mn.q_bg == _CAMB_Q_BG
+    assert mn.num_equations == 3 * mn.num_ells_per_bin
+
+    # Provenance pins: the vendored generator (arXiv:1201.3654 Appendix A
+    # moment matching) must reproduce both carried stencils to their
+    # published digits (truncation radius ~2e-6, thresholds ~3x). The looser
+    # 5-point weight threshold covers ABCMB's last weight, which carries
+    # 0.12681 for CAMB's 0.126817 (a transcription that dropped the final
+    # digit; rel diff 5.5e-5).
+    from abcmb.species._camb_stencil_generation import (
+        camb_five_point_rule,
+        camb_three_point_rule,
+    )
+
+    gen_q, gen_w = camb_three_point_rule()
+    assert all(abs(a / b - 1) < 5e-6 for a, b in zip(gen_q, _CAMB_Q_PERT))
+    assert all(abs(a / b - 1) < 5e-6 for a, b in zip(gen_w, _CAMB_W_PERT))
+    gen_q, gen_w = camb_five_point_rule()
+    assert all(abs(a / b - 1) < 5e-6 for a, b in zip(gen_q, _CAMB_Q_BG))
+    assert all(abs(a / b - 1) < 1e-4 for a, b in zip(gen_w, _CAMB_W_BG))
+
+
 def test_is_neutrino_flags():
     # Opt-in trait: False unless a species declares itself neutrino-like. The
     # two neutrino classes opt in; nothing else does.
