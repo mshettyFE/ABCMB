@@ -10,9 +10,10 @@ import numpy as np
 from jax import config, lax
 from jaxtyping import Array
 
-from . import background, derived, model_setup, perturbations, schema, spectrum
+from . import background, model_setup, perturbations, spectrum
 from .background import Background, BackgroundPreRecomb
 from .hyrex import hyrex
+from .inputs import derived, schema
 from .linx.abundances import AbundanceModel
 from .linx.background import BackgroundModel
 from .linx.nuclear import NuclearRates
@@ -21,7 +22,7 @@ from .species import Fluid
 
 if TYPE_CHECKING:
     # Compile-time only (generated type-checker artifact); annotations quote the names.
-    from ._schema_types import Options, Params
+    from .inputs._schema_types import Options, Params
 
 file_dir = os.path.dirname(__file__)
 

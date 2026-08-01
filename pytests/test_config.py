@@ -7,10 +7,10 @@ Schema option/param resolution lives in ``test_schema.py``; environment capture 
 run-file reproducibility (``save_run`` / ``write_run_toml``) in ``test_provenance.py``.
 """
 
-from abcmb import config
 from abcmb.cli import _parse_key_value
-from abcmb.config import load_config
-from abcmb.schema import route
+from abcmb.inputs import config
+from abcmb.inputs.config import load_config
+from abcmb.inputs.schema import route
 
 
 def test_toml_routes_by_name_not_table(tmp_path):
@@ -67,7 +67,7 @@ def test_dump_defaults_roundtrips(tmp_path, capsys):
     # --dump-defaults prints valid TOML that load_config parses back to exactly the
     # schema defaults (routed by name), so the dumped config is faithful.
     from abcmb.cli import main
-    from abcmb.schema import OPTION_SCHEMA, PARAM_SCHEMA, UNSET
+    from abcmb.inputs.schema import OPTION_SCHEMA, PARAM_SCHEMA, UNSET
 
     rc = main(["--dump-defaults"])
     out = capsys.readouterr().out
@@ -83,21 +83,21 @@ def test_dump_defaults_roundtrips(tmp_path, capsys):
 
 
 def test_generated_artifacts_are_fresh():
-    # defaults.toml and abcmb/_schema_types.py are generated from the schema and
-    # committed. This verifies they're up to date (CI/check.sh only *verify*;
-    # regenerate with `./check.sh fix` or `abcmb --dump-{defaults,types}`).
+    # defaults.toml and abcmb/inputs/_schema_types.py are generated from the
+    # schema and committed. This verifies they're up to date (CI/check.sh only
+    # *verify*; regenerate with `./check.sh fix` or `abcmb --dump-{defaults,types}`).
     from pathlib import Path
 
-    from abcmb._codegen import dump_types
-    from abcmb.config import dump_defaults
+    from abcmb.inputs._codegen import dump_types
+    from abcmb.inputs.config import dump_defaults
 
     root = Path(__file__).parents[1]
     assert dump_defaults() == (root / "defaults.toml").read_text(), (
         "defaults.toml is stale -- run ./check.sh fix"
     )
-    assert dump_types() == (root / "abcmb" / "_schema_types.py").read_text(), (
-        "abcmb/_schema_types.py is stale -- run ./check.sh fix"
-    )
+    assert (
+        dump_types() == (root / "abcmb" / "inputs" / "_schema_types.py").read_text()
+    ), "abcmb/inputs/_schema_types.py is stale -- run ./check.sh fix"
 
 
 def test_replay_species_drift(tmp_path, lcdm_model):
@@ -107,7 +107,7 @@ def test_replay_species_drift(tmp_path, lcdm_model):
     # table) replays fine.
     import pytest
 
-    from abcmb.config import check_replay_species, model_from_config
+    from abcmb.inputs.config import check_replay_species, model_from_config
 
     lcdm = ["DarkEnergy", "ColdDarkMatter", "Baryon", "Photon", "MasslessNeutrino"]
 
@@ -129,8 +129,8 @@ def test_replay_species_drift(tmp_path, lcdm_model):
 
 
 def test_public_config_api(tmp_path):
-    # The notebook-facing front door lives in abcmb.config (a plain module, so
-    # `import abcmb` stays jax-free until you reach for the file I/O).
+    # The notebook-facing front door lives in abcmb.inputs.config (a plain
+    # module, so `import abcmb` stays jax-free until you reach for the file I/O).
     cfg = tmp_path / "cosmo.toml"
     cfg.write_text("[cosmology]\nomega_cdm = 0.12\n[output]\nl_max = 200\n")
     options, params, env = config.load_config(str(cfg))
@@ -141,7 +141,7 @@ def test_public_config_api(tmp_path):
 
 
 def test_import_abcmb_stays_jax_free():
-    # Regression for the reason abcmb.config exists: importing the package must not
+    # Regression for the reason abcmb.inputs.config exists: importing the package must not
     # pull in JAX (keeps `abcmb --version`/`--help` and a bare import fast).
     import subprocess
     import sys

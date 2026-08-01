@@ -1,13 +1,13 @@
 """
 Regenerate the schema-derived, committed artifacts:
 
-* ``defaults.toml`` -- a starter config (rendered by :func:`abcmb.config.dump_defaults`).
-* ``abcmb/_schema_types.py`` -- the ``Options`` / ``Params`` ``TypedDict``s the type
+* ``defaults.toml`` -- a starter config (rendered by :func:`abcmb.inputs.config.dump_defaults`).
+* ``abcmb/inputs/_schema_types.py`` -- the ``Options`` / ``Params`` ``TypedDict``s the type
   checker consumes (rendered by :func:`dump_types`).
 
 This is dev/build tooling, not part of the user-facing CLI. Run it directly::
 
-    python -m abcmb._codegen        # or ./check.sh fix
+    python -m abcmb.inputs._codegen        # or ./check.sh fix
 
 ``_schema_types.py`` is imported only under ``TYPE_CHECKING`` (never at runtime), so
 this generator -- and the package as a whole -- work even if that file is missing or
@@ -22,7 +22,7 @@ from . import config, schema
 def dump_types() -> str:
     """
     Render the ``Options`` / ``Params`` ``TypedDict``s from the schema as importable
-    Python source (written to ``abcmb/_schema_types.py``).
+    Python source (written to ``abcmb/inputs/_schema_types.py``).
 
     Static type checkers need *literal* ``TypedDict`` definitions (they don't execute
     a runtime-built one), so the schema stays the single source of truth and this file
@@ -33,8 +33,8 @@ def dump_types() -> str:
     kind_name = {bool: "bool", int: "int", float: "float", str: "str"}
 
     lines = [
-        "# GENERATED from abcmb/schema.py; do not edit by hand.",
-        "# Regenerate with `./check.sh fix` (or `python -m abcmb._codegen`).",
+        "# GENERATED from abcmb/inputs/schema.py; do not edit by hand.",
+        "# Regenerate with `./check.sh fix` (or `python -m abcmb.inputs._codegen`).",
         "from typing import TypedDict",
         "",
         "from jax import Array",
@@ -67,9 +67,9 @@ def dump_types() -> str:
 def main() -> None:
     """Write both committed artifacts from the current schema."""
     pkg = Path(__file__).resolve().parent
-    (pkg.parent / "defaults.toml").write_text(config.dump_defaults())
+    (pkg.parent.parent / "defaults.toml").write_text(config.dump_defaults())
     (pkg / "_schema_types.py").write_text(dump_types())
-    print("Regenerated defaults.toml and abcmb/_schema_types.py")
+    print("Regenerated defaults.toml and abcmb/inputs/_schema_types.py")
 
 
 if __name__ == "__main__":

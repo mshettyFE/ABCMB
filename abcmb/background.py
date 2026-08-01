@@ -24,8 +24,8 @@ from .recomb_interface import RecombInputs
 from .species import Fluid
 
 if TYPE_CHECKING:
-    from ._schema_types import Params
     from .hyrex.hyrex import recomb_model
+    from .inputs._schema_types import Params
     from .reionization import ReionizationModel
 
 file_dir = os.path.dirname(__file__)

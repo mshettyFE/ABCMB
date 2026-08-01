@@ -168,20 +168,7 @@ def fast_interp(
     uniform grid spacing. Significantly faster than jnp.interp for
     large arrays.
 
-    Parameters:
-    -----------
-    x : float or array
-        Query points for interpolation
-    xp_min : float
-        Minimum value of interpolation grid
-    xp_max : float
-        Maximum value of interpolation grid
-    fp : array
-        Function values on uniform grid
-
     Returns:
-    --------
-    float or array
         Interpolated values at query points
 
     Notes:

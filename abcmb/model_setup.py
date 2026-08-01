@@ -4,7 +4,7 @@ Model construction helpers.
 Builds the fluid species list (``populate_species``) and the perturbation /
 transfer k-axis grids from a resolved ``options`` dict. The declarative input
 schema (options/params resolution, aliases, provenance) lives in
-:mod:`abcmb.schema`.
+:mod:`abcmb.inputs.schema`.
 """
 
 import warnings
@@ -19,7 +19,7 @@ from jaxtyping import Array, Float
 from . import species
 
 if TYPE_CHECKING:
-    from ._schema_types import Options
+    from .inputs._schema_types import Options
 
 
 class _ProbeFluidParams(dict):

@@ -16,11 +16,11 @@ from jax import lax, vmap
 from jaxtyping import Array
 
 from . import constants as cnst
-from .schema import KBatchStrategy
+from .inputs.schema import KBatchStrategy
 from .species import Baryon, Fluid, PerturbationContext, StandardFluid
 
 if TYPE_CHECKING:
-    from ._schema_types import Options
+    from .inputs._schema_types import Options
 
 file_dir = os.path.dirname(__file__)
 jax.config.update("jax_enable_x64", True)

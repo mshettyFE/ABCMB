@@ -101,7 +101,7 @@ extend-exclude = [
     "abcmb/linx",
     "abcmb/hyrex",
     "example_notebooks",
-    "abcmb/_schema_types.py",  # generated from the schema 
+    "abcmb/inputs/_schema_types.py",  # generated from the schema
 ]
 
 [tool.ruff.lint]

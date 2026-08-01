@@ -8,8 +8,8 @@ Option/param resolution lives in ``test_schema.py``; config loading + the CLI in
 ``test_config.py``.
 """
 
-from abcmb import config, provenance
-from abcmb.config import load_config
+from abcmb.inputs import config, provenance
+from abcmb.inputs.config import load_config
 
 
 def test_environment_degrades_outside_git_repo(tmp_path):

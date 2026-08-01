@@ -8,7 +8,7 @@ import pytest
 
 
 def _options():
-    from abcmb import schema
+    from abcmb.inputs import schema
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -31,7 +31,8 @@ def test_missing_required_role_raises():
     # with a KeyError mid-trace on the first call.
     import warnings
 
-    from abcmb import model_setup, schema, species
+    from abcmb import model_setup, species
+    from abcmb.inputs import schema
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -65,7 +66,8 @@ def test_role_impostor_raises_at_construction():
     # way, so the check belongs at Model construction.
     import warnings
 
-    from abcmb import model_setup, schema, species
+    from abcmb import model_setup, species
+    from abcmb.inputs import schema
 
     class FakeBaryon(species.BackgroundFluid):
         name = "Baryon"
@@ -221,7 +223,7 @@ def test_options_key_set_is_stable(lcdm_model):
     # not stash computed keys into it (the old k_min/k_max_cmb pattern), while
     # user passthrough extras (custom-species knobs) must survive resolution.
     # (The shared lcdm_model is built with custom_knob=1 for exactly this.)
-    from abcmb import schema
+    from abcmb.inputs import schema
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -237,7 +239,8 @@ def test_k_batch_strategy_option():
 
     from jax import default_backend
 
-    from abcmb import perturbations, schema
+    from abcmb import perturbations
+    from abcmb.inputs import schema
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")

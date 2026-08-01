@@ -18,10 +18,10 @@ _EXPORTS = {
     "Model": ".main",
     "Output": ".main",
     # File-driven entry points (config front door).
-    "load_config": ".config",
-    "model_from_config": ".config",
-    "save_run": ".config",
-    "dump_defaults": ".config",
+    "load_config": ".inputs.config",
+    "model_from_config": ".inputs.config",
+    "save_run": ".inputs.config",
+    "dump_defaults": ".inputs.config",
     # The custom-species extension API.
     "Fluid": ".species",
     "StandardFluid": ".species",
@@ -47,10 +47,10 @@ __all__ = [
 if TYPE_CHECKING:
     # Static-only mirror of _EXPORTS so pyright/IDEs see the lazy attributes
     # (the `X as X` aliases mark them as deliberate re-exports).
-    from .config import dump_defaults as dump_defaults
-    from .config import load_config as load_config
-    from .config import model_from_config as model_from_config
-    from .config import save_run as save_run
+    from .inputs.config import dump_defaults as dump_defaults
+    from .inputs.config import load_config as load_config
+    from .inputs.config import model_from_config as model_from_config
+    from .inputs.config import save_run as save_run
     from .main import Model as Model
     from .main import Output as Output
     from .species import BackgroundFluid as BackgroundFluid

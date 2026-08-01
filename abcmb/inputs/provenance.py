@@ -20,7 +20,7 @@ import jax
 import numpy as np
 import tomlkit
 
-from . import version
+from .. import version
 
 MANIFEST_VERSION = 1
 

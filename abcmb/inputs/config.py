@@ -103,7 +103,7 @@ def model_from_config(path):
     Load ``(options, params)`` yourself with :func:`load_config` if you need the
     recorded environment for a drift check.
     """
-    from .main import Model
+    from ..main import Model
 
     options, params, _environment = load_config(path)
     model = Model(**options)
@@ -158,7 +158,7 @@ def dump_defaults() -> str:
         "NOTE: Providing derived values on the CLI will get overridden",
         "",
         "Usage:  abcmb --config defaults.toml -o out.npz",
-        "        from abcmb.config import model_from_config",
+        "        from abcmb import model_from_config",
         "        model, params = model_from_config('defaults.toml')",
     ):
         doc.add(tomlkit.comment(line))

@@ -10,7 +10,7 @@ import warnings
 
 import pytest
 
-from abcmb.schema import resolve_options, resolve_params
+from abcmb.inputs.schema import resolve_options, resolve_params
 
 
 def test_resolve_options_defaults():
@@ -117,7 +117,7 @@ def test_check_value_kind():
     # _as_number exists to accept).
     import jax.numpy as jnp
 
-    from abcmb.schema import Spec, _check_value
+    from abcmb.inputs.schema import Spec, _check_value
 
     num = Spec("x", 1.0, float)
     with pytest.warns(UserWarning, match=r"'x' expected float, got str"):
@@ -144,7 +144,7 @@ def test_check_value_kind():
 def test_neutrino_one_of_invariant():
     # The 1-to-1 rule (was print + sys.exit) is a param-only helper called up front
     # by derive_parameters, so it is testable with no Model construction.
-    from abcmb.derived import _check_neutrino_input
+    from abcmb.inputs.derived import _check_neutrino_input
 
     _check_neutrino_input({"Neff": 3.044})  # one alone is fine
     _check_neutrino_input({"N_nu_massless": 2.0})  # the other alone is fine
@@ -154,7 +154,7 @@ def test_neutrino_one_of_invariant():
 
 def test_linx_conflict_raises():
     # Supplying a neutrino input under LINX (which computes it) is rejected up front.
-    from abcmb.derived import _resolve_neutrino_input
+    from abcmb.inputs.derived import _resolve_neutrino_input
 
     with pytest.raises(ValueError, match="LINX"):
         _resolve_neutrino_input({"Neff": 3.044}, {"bbn_type": "linx"})
@@ -187,7 +187,7 @@ def test_derived_density_guards():
     # The derived-cosmology guards fail fast (clear error, not a NaN spectrum).
     import jax.numpy as jnp
 
-    from abcmb.derived import _derive_densities
+    from abcmb.inputs.derived import _derive_densities
 
     base = {"h": jnp.asarray(0.68), "omega_b": jnp.asarray(0.02), "omega_Lambda": 0.0}
 
@@ -226,7 +226,7 @@ def test_n_massless_from_neff_guard():
     # Too-small Neff for the other relativistic species -> negative count.
     import jax.numpy as jnp
 
-    from abcmb.derived import _n_massless_from_neff
+    from abcmb.inputs.derived import _n_massless_from_neff
 
     with pytest.raises(ValueError, match="negative massless-neutrino"):
         _n_massless_from_neff(
@@ -248,7 +248,7 @@ def test_n_massless_from_neff_guard():
 def test_bbn_type_validation():
     # The schema's choices check warns; interpretation refuses to guess: an
     # uninterpretable bbn_type raises instead of silently meaning "no BBN".
-    from abcmb.derived import _bbn_type
+    from abcmb.inputs.derived import _bbn_type
 
     assert _bbn_type({"bbn_type": "Table"}) == "table"  # case-insensitive
     assert _bbn_type({"bbn_type": ""}) == ""
@@ -262,7 +262,7 @@ def test_sbbn_table_out_of_range_warns():
     import jax.numpy as jnp
     import numpy as np
 
-    from abcmb.derived import _helium_from_table
+    from abcmb.inputs.derived import _helium_from_table
 
     # Synthetic table with the hardcoded sBBN layout (13 x 701) and a linear
     # YHe surface, so extrapolation is exactly reproducible.

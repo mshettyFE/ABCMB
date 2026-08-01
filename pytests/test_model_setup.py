@@ -15,7 +15,7 @@ import pytest
 
 
 def _options(**overrides):
-    from abcmb import schema
+    from abcmb.inputs import schema
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")

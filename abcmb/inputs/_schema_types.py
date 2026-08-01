@@ -1,5 +1,5 @@
-# GENERATED from abcmb/schema.py; do not edit by hand.
-# Regenerate with `./check.sh fix` (or `python -m abcmb._codegen`).
+# GENERATED from abcmb/inputs/schema.py; do not edit by hand.
+# Regenerate with `./check.sh fix` (or `python -m abcmb.inputs._codegen`).
 from typing import TypedDict
 
 from jax import Array

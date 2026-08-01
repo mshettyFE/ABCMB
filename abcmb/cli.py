@@ -127,7 +127,7 @@ def main(argv=None):
     # Deferred until after parse_args: schema/config pull in JAX transitively,
     # so --help/--version above stay instant -- and still work in an environment
     # where JAX itself fails to import (broken jaxlib/CUDA).
-    from . import config, provenance, schema
+    from .inputs import config, provenance, schema
 
     # Discovery flag: print the parameter/option reference and exit.
     if args.list_params:

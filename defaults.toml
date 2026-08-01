@@ -10,7 +10,7 @@
 # NOTE: Providing derived values on the CLI will get overridden
 #
 # Usage:  abcmb --config defaults.toml -o out.npz
-#         from abcmb.config import model_from_config
+#         from abcmb import model_from_config
 #         model, params = model_from_config('defaults.toml')
 
 [cosmology]

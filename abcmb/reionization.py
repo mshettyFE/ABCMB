@@ -19,8 +19,8 @@ from jaxtyping import Array, Float
 from . import constants as cnst
 
 if TYPE_CHECKING:
-    from ._schema_types import Params
     from .background import Background
+    from .inputs._schema_types import Params
 
 
 class ReionizationModel(eqx.Module):

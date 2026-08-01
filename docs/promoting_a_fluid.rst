@@ -63,7 +63,7 @@ Step 2: declare the parameters (and options) in the schema
 ----------------------------------------------------------
 
 This is the step that converts passthrough parameters into declared ones. Add
-one :class:`~abcmb.schema.Spec` row per parameter in ``abcmb/schema.py``:
+one :class:`~abcmb.inputs.schema.Spec` row per parameter in ``abcmb/inputs/schema.py``:
 
 .. code-block:: python
 
@@ -109,7 +109,7 @@ Step 3: regenerate the schema artifacts
 
 This regenerates the two committed, schema-derived artifacts:
 ``defaults.toml`` (your parameters appear with defaults and doc comments) and
-``abcmb/_schema_types.py`` (the ``Params`` TypedDict gains your keys, which is
+``abcmb/inputs/_schema_types.py`` (the ``Params`` TypedDict gains your keys, which is
 what activates static key checking for them). A staleness test fails CI if
 this step is forgotten.
 

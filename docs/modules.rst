@@ -13,7 +13,7 @@ directly from the package root, e.g. ``from abcmb import Model``.
    :maxdepth: 2
 
    abcmb.main
-   abcmb.config
+   abcmb.inputs.config
    abcmb.species
 
 Internals
@@ -29,9 +29,9 @@ without notice.
    abcmb.background
    abcmb.perturbations
    abcmb.spectrum
-   abcmb.schema
-   abcmb.derived
+   abcmb.inputs.schema
+   abcmb.inputs.derived
    abcmb.model_setup
-   abcmb.provenance
+   abcmb.inputs.provenance
    abcmb.constants
    abcmb.ABCMBTools

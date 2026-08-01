@@ -1,7 +1,7 @@
-abcmb.schema module
+abcmb.inputs.schema module
 ===================
 
-.. automodule:: abcmb.schema
+.. automodule:: abcmb.inputs.schema
    :members:
    :show-inheritance:
    :exclude-members: kind

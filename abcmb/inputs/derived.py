@@ -10,12 +10,12 @@ import jax
 import jax.numpy as jnp
 from jax.scipy.interpolate import RegularGridInterpolator
 
-from . import constants as cnst
+from .. import constants as cnst
 
 if TYPE_CHECKING:
     from ._schema_types import Options, Params
-from .linx import const as linxconst
-from .linx import thermo as linxThermo
+from ..linx import const as linxconst
+from ..linx import thermo as linxThermo
 
 
 def _check_neutrino_input(params: "Params"):
