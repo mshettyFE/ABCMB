@@ -429,7 +429,7 @@ class Background(BackgroundPreRecomb):
 
     def xe(self, lna: Float[Array, ""] | float) -> Float[Array, ""]:
         """
-        Compute free electron fraction.
+        Compute free electron fraction. (n_e/n_H)
 
         Interpolates from pre-tabulated recombination history with
         boundary conditions for early and late times.

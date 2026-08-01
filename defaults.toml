@@ -18,7 +18,7 @@ h = 0.6736              # (param, float) Dimensionless Hubble parameter H0/100.
 omega_cdm = 0.12        # (param, float) Physical CDM density Omega_cdm h^2.
 omega_b = 0.02237       # (param, float) Physical baryon density Omega_b h^2.
 TCMB0 = 0.000234865418  # (param, float) CMB temperature today, in eV.
-YHe = 0.245             # (param, float) Primordial helium mass fraction (overwritten when bbn_type computes it).
+YHe = 0.245             # (param, float) Primordial helium mass fraction (n_He/(n_He+n_H)). Tacitly assuming no other species are produced in meaningful amounts (overwritten when bbn_type computes it).
 
 [primordial]
 A_s = 2.1e-09   # (param, float) Scalar amplitude at the pivot scale.

@@ -35,11 +35,8 @@ class Baryon(StandardFluid):
         Returns:
             Baryon density (units: eV cm^{-3})
         """
-        return (
-            args["omega_b"]
-            * (3.0 * cnst.H0_over_h**2 / 8.0 / jnp.pi / cnst.G)
-            / jnp.exp(lna) ** 3
-        )
+        unit_factor = 3.0 * cnst.H0_over_h**2 / (8.0 * jnp.pi * cnst.G)
+        return args["omega_b"] * unit_factor / (jnp.exp(lna) ** 3)
 
     def P(self, lna: ArrayLike, args: FluidParams) -> Array | float:
         """
@@ -73,22 +70,11 @@ class Baryon(StandardFluid):
         Tg = BG.TCMB(lna, params)  # Photon temp
         mu = self.mean_mass(lna, (BG, params))
         R = 4.0 * photon.rho(lna, params) / 3.0 / self.rho(lna, params)
-
-        return (
-            Tm
-            / mu
-            * (
-                5.0 / 3.0
-                - 2.0
-                / 3.0
-                * mu
-                * R
-                / cnst.me
-                / BG.aH(lna, params)
-                / BG.tau_c(lna, params)
-                * (Tg / Tm - 1.0)
-            )
+        dlnTm_dlna = -2.0 + 2.0 * mu * R / cnst.me * (Tg / Tm - 1.0) / (
+            BG.aH(lna, params) * BG.tau_c(lna, params)
         )
+
+        return (Tm / mu) * (1.0 - dlnTm_dlna / 3.0)
 
     def mean_mass(
         self, lna: ArrayLike, args: "tuple[Background, FluidParams]"
@@ -96,42 +82,36 @@ class Baryon(StandardFluid):
         """
         Compute mean baryon mass at given redshift.
         Defined to be mu = rho_b / n_b = rho_b / (nH + nHe + ne)
+        We expect rho_b to drop out of final calculation
 
         Returns:
             Mean baryon mass (units: eV)
 
         """
         BG, params = args
-        denom = (1.0 + BG.xe(lna)) * (
-            1.0 - params["YHe"]
-        ) + cnst.mH / cnst.mHe * params["YHe"]
-        return cnst.mH / denom
+        f_H = 1.0 - params["YHe"]  # H fraction = H number in units rho_N/mH
+        nHe = cnst.mH / cnst.mHe * params["YHe"]
+        ne = f_H * BG.xe(lna)
+        n = f_H + ne + nHe
+        return cnst.mH / n
 
     def y_ini(self, k: ArrayLike, tau_ini: ArrayLike, args: FluidParams) -> Array:
-        """
-        The adiabatic initial conditions are M&B  Eq. (96) with C = 1/2
-        (delta_b = 3/4*delta_g, theta_b = theta_g), plus the next-order om*tau
-        corrections used by CLASS (perturbations.c, adiabatic ICs).
+        r"""
+        The adiabatic initial conditions from CRS (arXiv:1012.0569) which include
+        the next-order om*tau corrections used by CLASS: delta from B4
+        (= 3/4 of the photon B1), theta from B2 at zeroth order in tight
+        coupling (the B5 slip is dropped), with \beta_1 = 1/2 fixed by the
+        eta_ini = 1 normalization.
 
         Returns:
             Initial perturbation mode values (units: 1/Mpc for theta, else dimensionless)
         """
         params = args
-        delta = -((k * tau_ini) ** 2) / 4.0 * (1.0 - params["om"] * tau_ini / 5.0)
-        theta = (
-            -(k**4)
-            * tau_ini**3
-            / 36.0
-            * (
-                1.0
-                - 3.0
-                * (1.0 + 5.0 * params["R_b"] - params["R_nu"])
-                / 20.0
-                / (1.0 - params["R_nu"])
-                * params["om"]
-                * tau_ini
-            )
-        )
+        delta_prefactor = (k * tau_ini) ** 2.0
+        delta = -delta_prefactor * (1.0 / 4.0 - params["om"] * tau_ini / 20.0)
+        theta_prefactor = k**4 * tau_ini**3
+        slope = (1.0 + 5.0 * params["R_b"] - params["R_nu"]) / (1.0 - params["R_nu"])
+        theta = -theta_prefactor * (1.0 / 36.0 - params["om"] * tau_ini * slope / 240.0)
         return jnp.array([delta, theta])
 
     def y_prime(

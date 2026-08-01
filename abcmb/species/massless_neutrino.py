@@ -63,7 +63,8 @@ class MasslessNeutrino(StandardFluid):
         Follows Ma & Bertschinger (1995), ApJ 455, 7 (arXiv:astro-ph/9506072).
         The adiabatic initial conditions are their Eq. (96)
         with C = 1/2, plus the next-order om*tau corrections used by CLASS
-        (perturbations.c, adiabatic ICs: theta_ur, shear_ur).
+        (perturbations.c, adiabatic ICs: theta_ur, shear_ur; first-order
+        series of Cyr-Racine & Sigurdson, arXiv:1012.0569).
 
          Returns:
            Initial perturbation mode values (units: 1/Mpc for theta, else dimensionless)

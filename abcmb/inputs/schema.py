@@ -850,7 +850,7 @@ PARAM_SCHEMA = (
         "YHe",
         0.245,
         float,
-        "Primordial helium mass fraction (overwritten when bbn_type computes it).",
+        "Primordial helium mass fraction (n_He/(n_He+n_H)). Tacitly assuming no other species are produced in meaningful amounts (overwritten when bbn_type computes it).",
         group=Group.COSMOLOGY,
         bounds=(0.0, 1.0),
     ),

@@ -58,7 +58,8 @@ class ColdDarkMatter(StandardFluid):
         unit-curvature normalization eta_ini -> 2C = 1 (see
         initial_conditions_one_k), plus the next-order (1 - om*tau/5)
         correction used by CLASS (perturbations.c, adiabatic ICs;
-        om = a*rho_m/sqrt(rho_r)).
+        om = a*rho_m/sqrt(rho_r); first-order series of Cyr-Racine &
+        Sigurdson, arXiv:1012.0569).
 
         Returns:
             Initial density perturbation (units: dimensionless)
