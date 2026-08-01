@@ -188,8 +188,11 @@ def test_options_key_set_is_stable(lcdm_model):
 
 def test_k_batch_strategy_option():
     # The k-mode batching strategy is a declared option, not a backend sniff:
-    # explicit values are honored verbatim; 'auto' resolves by JAX backend
-    # (CI pins JAX_PLATFORM_NAME=cpu, so auto -> scan here).
+    # explicit values are honored verbatim; 'auto' resolves by the JAX
+    # default backend.
+
+    from jax import default_backend
+
     from abcmb import perturbations, schema
 
     with warnings.catch_warnings():
@@ -199,7 +202,8 @@ def test_k_batch_strategy_option():
     assert options["k_batch_strategy"] == "auto"
     assert perturbations._k_batch_strategy("scan") is Strategy.SCAN
     assert perturbations._k_batch_strategy("VMAP") is Strategy.VMAP
-    assert perturbations._k_batch_strategy("auto") is Strategy.SCAN
+    expected_auto = Strategy.VMAP if default_backend() == "gpu" else Strategy.SCAN
+    assert perturbations._k_batch_strategy("auto") is expected_auto
     # Schema warns at resolution (non-fatal choices)...
     with pytest.warns(UserWarning, match=r"not one of.*Did you mean"):
         schema.resolve_options({"k_batch_strategy": "vamp"})

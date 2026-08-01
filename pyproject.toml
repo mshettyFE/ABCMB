@@ -54,6 +54,14 @@ docs = [
     "sphinx",
     "sphinx-rtd-theme",
 ]
+# CUDA-enabled jaxlib for the same pinned jax (needs an NVIDIA driver).
+# Note: the companion solvers (HyRex/LINX) are CPU-pinned regardless --
+# measured 29x faster on CPU than an RTX 4070 for the recombination solve --
+# so this extra serves the main pipeline (perturbations/spectra) and
+# benchmarking, not the companions.
+gpu = [
+    "jax[cuda12]==0.8.1",
+]
 
 [project.urls]
 Homepage = "https://github.com/TonyZhou729/ABCMB"

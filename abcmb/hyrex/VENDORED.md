@@ -33,9 +33,12 @@ graph with the duplicate background removed.
   internal solves so the AD strategy is uniform.
 - **Internal `jit`s removed**: ABCMB jits the whole pipeline once; nested
   jits stripped.
-- The `array_with_padding` inf-padding convention is load-bearing for
-  ABCMB's `background.py` (`_finite_pad` reverse-AD fix) -- do not change
-  the padding sentinel without revisiting that.
+- **`array_with_padding` is contained**: `get_history` sanitizes the inf
+  padding and resamples every history onto the static `lna_axis_full` grid
+  before returning, so the sentinel and its traced-int metadata never leave
+  this package (ABCMB's `Background` consumes plain fixed-size arrays plus
+  one validity-start scalar). The padding convention is now purely internal
+  to hyrex.
 
 ## Syncing
 

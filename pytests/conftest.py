@@ -4,7 +4,10 @@ import warnings
 import jax
 import pytest
 
-# Make CI runs consistent
+# Make CI runs consistent. JAX_PLATFORMS (the modern variable) makes CPU the
+# *only* backend, so backend sniffs (k_batch_strategy='auto') can't see an
+# installed GPU; the deprecated JAX_PLATFORM_NAME alone no longer hides it.
+os.environ.setdefault("JAX_PLATFORMS", "cpu")
 os.environ.setdefault("JAX_PLATFORM_NAME", "cpu")
 
 # Enable double precision

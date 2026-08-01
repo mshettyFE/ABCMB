@@ -244,14 +244,6 @@ class Model(eqx.Module):
         except Exception:
             pass
 
-        # recomb_output contains array_with_padding objects whose
-        # padding_size and lastnum int arrays.  The
-        # checkpointed_while_loop's filter_custom_vjp inside
-        # _run_post_recomb's diffrax solves trips an internal
-        # _get_value_assert_unperturbed on int leaves under outer
-        # AD; convert to float to avoid.
-        recomb_output = jax.tree_util.tree_map(_to_float, recomb_output)
-
         return self._run_post_recomb(params, pre_BG, recomb_output)
 
     @eqx.filter_jit

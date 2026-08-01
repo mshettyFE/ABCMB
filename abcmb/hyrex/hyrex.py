@@ -7,6 +7,7 @@ from diffrax import Kvaerno3, ForwardMode
 from .hydrogen import hydrogen_model
 from .helium import helium_model
 from .array_with_padding import array_with_padding
+from ..ABCMBTools import fast_interp
 config.update("jax_enable_x64", True)
 
 # RecombInputs -- the bundle of background quantities this model consumes --
@@ -129,4 +130,23 @@ class recomb_model(eqx.Module):
         xe_4He, lna_4He = helium_model(lna_axis_4Heequil, adjoint=self.adjoint)(args)
         xe_full, lna_full, Tm, lna_Tm = hydrogen_model(xe_4He,lna_4He,-jnp.log(1+self.z1),lna_4He.lastval,self.twog_redshift, adjoint=self.adjoint)(args)
 
-        return (xe_full, lna_full, Tm, lna_Tm)
+        # Containment boundary (ABCMB fork addition): sanitize the inf
+        # padding and resample every history onto the static lna_axis_full
+        # grid, so array_with_padding -- its sentinel and traced-int
+        # metadata -- never leaves this package. Outside a history's valid
+        # range the resample clamps to its endpoint values (benign fill; no
+        # inf can reach downstream AD). Tm's validity start is returned as a
+        # scalar so the caller can gate its early-time approximation.
+        grid = self.lna_axis_full
+
+        def _resample(vals_awp, axis_awp):
+            vals = jnp.where(jnp.isinf(vals_awp.arr), vals_awp.lastval, vals_awp.arr)
+            x0 = axis_awp.arr[0]
+            dx = axis_awp.arr[1] - x0
+            n = axis_awp.arr.shape[0]
+            return fast_interp(grid, x0, x0 + (n - 1) * dx, vals)
+
+        xe_grid = _resample(xe_full, lna_full)
+        Tm_grid = _resample(Tm, lna_Tm)
+
+        return (xe_grid, grid, Tm_grid, lna_Tm.arr[0])
