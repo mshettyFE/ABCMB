@@ -14,14 +14,7 @@ from .base import Fluid, FluidParams, OutputArgs, PerturbationContext, StandardF
 
 class MasslessNeutrino(StandardFluid):
     """
-    Massless neutrinos fluid species implementation.
-
     Represents relativistic neutrinos with multiple angular momentum modes.
-
-    Methods:
-    --------
-    rho : Compute neutrino density (units: eV cm^{-3})
-    P : Compute neutrino pressure (units: eV cm^{-3})
     """
 
     name = "MasslessNeutrino"
@@ -36,16 +29,7 @@ class MasslessNeutrino(StandardFluid):
         """
         Compute neutrino density.
 
-        Parameters:
-        -----------
-        lna : float
-            Logarithm of scale factor
-        args : mapping
-            Cosmological parameters (params)
-
         Returns:
-        --------
-        float
             Neutrino density (units: eV cm^{-3})
         """
         params = args
@@ -69,17 +53,8 @@ class MasslessNeutrino(StandardFluid):
         """
         Compute neutrino pressure.
 
-        Parameters:
-        -----------
-        lna : float
-            Logarithm of scale factor
-        args : mapping
-            Cosmological parameters (params)
-
         Returns:
-        --------
-        float
-            Neutrino pressure (units: eV cm^{-3})
+           Neutrino pressure (units: eV cm^{-3})
         """
         params = args
         return self.rho(lna, params) / 3.0
@@ -87,20 +62,13 @@ class MasslessNeutrino(StandardFluid):
     def y_ini(self, k: ArrayLike, tau_ini: ArrayLike, args: FluidParams) -> Array:
         """
         Compute initial conditions for massless neutrino perturbations.
+        Follows Ma & Bertschinger (1995), ApJ 455, 7 (arXiv:astro-ph/9506072).
+        The adiabatic initial conditions are their Eq. (96)
+        with C = 1/2, plus the next-order om*tau corrections used by CLASS
+        (perturbations.c, adiabatic ICs: theta_ur, shear_ur).
 
-        Parameters:
-        -----------
-        k : float
-            Wavenumber (units: Mpc^{-1})
-        tau_ini : float
-            Initial conformal time (units: Mpc)
-        args : mapping
-            Cosmological parameters (params)
-
-        Returns:
-        --------
-        array
-            Initial perturbation mode values (units: 1/Mpc for theta, else dimensionless)
+         Returns:
+           Initial perturbation mode values (units: 1/Mpc for theta, else dimensionless)
         """
         params = args
         R_nu = params["R_nu"]
@@ -154,27 +122,11 @@ class MasslessNeutrino(StandardFluid):
     ) -> Array:
         """
         Compute time derivatives of massless neutrino perturbations.
-
-        Parameters:
-        -----------
-        k : float
-            Wavenumber (units: Mpc^{-1})
-        lna : float
-            Logarithm of scale factor
-        metric_h_prime : float
-            Derivative of metric h
-        metric_eta_prime : float
-            Derivative of metric eta
-        y : array
-            Current perturbation mode values
-        args : PerturbationContext
-            Background cosmology, cosmological parameters, and the species
-            registry for coupled fluids (use ``args.BG``, ``args.params``,
-            ``args.species_list``, ``args.species_dict``)
+        Follows Ma & Bertschinger (1995), ApJ 455, 7 (arXiv:astro-ph/9506072).
+        The collisionless hierarchy is their Eq. (49), truncated at l_max with
+        their Eq. (51).
 
         Returns:
-        --------
-        array
             Time derivatives of perturbation modes (units: 1/Mpc for theta, else dimensionless)
         """
         BG, params = args.BG, args.params
@@ -225,36 +177,46 @@ class MasslessNeutrino(StandardFluid):
 
 class MassiveNeutrino(Fluid):
     """
-    Massive neutrinos fluid species implementation.
-
     Non-relativistic neutrinos with multiple angular momentum modes.
 
-    Attributes:
-    -----------
-    num_ells_per_bin : int
-        Number of multipole moments per momentum bin for massive neutrino hierarchy
-
-    Methods:
-    --------
-    rho : Compute massive neutrino density (units: eV cm^{-3})
-    P : Compute massive neutrino pressure (units: eV cm^{-3})
-    y_ini : Compute initial perturbation conditions
-    y_prime : Compute perturbation time derivatives
-    rho_delta : Compute density perturbation (units: eV cm^{-3})
-    rho_plus_P_theta : Compute velocity perturbation (units: eV cm^{-3} Mpc^{-1})
-    rho_plus_P_sigma : Compute shear perturbation (units: eV cm^{-3})
+    Notes
+    -----
+    The sparse momentum quadrature (q_3p/w_3p, q_5p/w_5p) replaces MB95's
+    dense q-grid with CAMB rules (massive_neutrinos.f90), constructed by
+    moment-matching against the perturbation kernel q^4 * (-df0/dq)
+    (arXiv:1201.3654, Appendix A; generator at
+    camb.info/maple/nu_integration_kernels.py). The 3-point rule is CAMB's
+    current one -- the unique 3-node match of the moments n = -4..2. The
+    5-point rule is CAMB's *original* one, kept upstream only as a comment
+    since being replaced by an exact+least-squares refit; swapping in the
+    modern rule would change background rho/P at the ~1e-4 level.
     """
 
     num_ells_per_bin: int = eqx.field(default=0, static=True)
 
+    # CAMB's sparse momentum quadrature (massive_neutrinos.f90): nodes q_i
+    # and kernel weights w_i satisfying, with f0(q) = 1/(e^q + 1),
+    #
+    #   (1/4) * int dq q^2 f0(q) F(q)  ~=  sum_i w_i (1+e^{-q_i}) F(q_i)/q_i^2
+    #
+    # (the 1/4 is cancelled by the 4/pi^2 prefactors in the integrals below).
+    # The weights fold the q^2 f0 measure into themselves, which is why every
+    # integrand here carries the compensating (1 + e^{-q})/q^2 factor.
+    #
+    # Generated by moment-matching against the perturbation kernel
+    # q^4 * (-df0/dq): Howlett, Lewis, Hall & Challinor (arXiv:1201.3654),
+    # Appendix A; executable generator at
+    # https://camb.info/maple/nu_integration_kernels.py (reproduces q_3p/w_3p
+    # to all published digits; q_5p/w_5p is CAMB's since-replaced original).
     q_3p = jnp.array([0.913201, 3.37517, 7.79184])
     w_3p = jnp.array([0.0687359, 3.31435, 2.29911])
     q_5p = jnp.array([0.583165, 2.0, 4.0, 7.26582, 13.0])
     w_5p = jnp.array([0.0081201, 0.689407, 2.8063, 2.05156, 0.12681])
 
-    dlfdlq_3p = -q_3p / (
-        1.0 + jnp.exp(-q_3p)
-    )  # Log derivative of fermi-dirac w.r.t. momentum
+    # d(ln f0)/d(ln q) at the 3-point nodes, for the Fermi-Dirac f0: the
+    # metric-source coupling of the Psi hierarchy and its initial conditions
+    # (MB95 Eqs. 56 and 97) are written in terms of this quantity.
+    dlnf0_dlnq_3p = -q_3p / (1.0 + jnp.exp(-q_3p))
 
     name = "MassiveNeutrino"
     is_matter = True
@@ -270,17 +232,8 @@ class MassiveNeutrino(Fluid):
         """
         Compute massive neutrino density.
 
-        Parameters:
-        -----------
-        lna : float or ArrayLike
-            Logarithm of scale factor
-        args : mapping
-            Cosmological parameters (params)
-
         Returns:
-        --------
-        float or ArrayLike
-            Massive neutrino density (units: eV cm^{-3})
+           Massive neutrino density (units: eV cm^{-3})
         """
         params = args
 
@@ -316,17 +269,8 @@ class MassiveNeutrino(Fluid):
         """
         Compute massive neutrino pressure.
 
-        Parameters:
-        -----------
-        lna : float or ArrayLike
-            Logarithm of scale factor
-        args : mapping
-            Cosmological parameters (params)
-
         Returns:
-        --------
-        float or ArrayLike
-            Massive neutrino pressure (units: eV cm^{-3})
+           Massive neutrino pressure (units: eV cm^{-3})
         """
         params = args
 
@@ -362,19 +306,11 @@ class MassiveNeutrino(Fluid):
     def y_ini(self, k: ArrayLike, tau_ini: ArrayLike, args: FluidParams) -> Array:
         """
         Compute initial conditions for massive neutrino perturbations.
-
-        Parameters:
-        -----------
-        k : float
-            Wavenumber (units: Mpc^{-1})
-        tau_ini : float
-            Initial conformal time (units: Mpc)
-        args : mapping
-            Cosmological parameters (params)
+        Follows Ma & Bertschinger (1995), ApJ 455, 7 (arXiv:astro-ph/9506072).
+        the initial conditions are their Eq. (97) (with
+        epsilon/q -> 1 at early times).
 
         Returns:
-        --------
-        array
             Initial perturbation mode values (units: 1/Mpc for kPsi1, else dimensionless)
         """
         params = args
@@ -416,12 +352,12 @@ class MassiveNeutrino(Fluid):
 
         bins = []
         for i in range(3):
-            q = self.q_3p[i]
+            # MB95 Eq. (97): (Psi0, kPsi1, Psi2) = -(delta/4, theta/3, sigma/2)
+            # * dlnf0/dlnq.
             # ZZ : Techniclly Psi1 requires epsilon/q = 1/v, but at early times this should be 1. Should check this accuracy!
             first_three = (
-                jnp.array([delta / 4.0, theta / 3.0, sigma / 2.0])
-                * q
-                / (1.0 + jnp.exp(-q))
+                -jnp.array([delta / 4.0, theta / 3.0, sigma / 2.0])
+                * self.dlnf0_dlnq_3p[i]
             )
             bins.append(
                 jnp.concatenate((first_three, jnp.zeros(self.num_ells_per_bin - 3)))
@@ -440,27 +376,12 @@ class MassiveNeutrino(Fluid):
     ) -> Array:
         """
         Compute time derivatives of massive neutrino perturbations.
-
-        Parameters:
-        -----------
-        k : float
-            Wavenumber (units: Mpc^{-1})
-        lna : float
-            Logarithm of scale factor
-        metric_h_prime : float
-            Derivative of metric h
-        metric_eta_prime : float
-            Derivative of metric eta
-        y : array
-            Current perturbation mode values
-        args : PerturbationContext
-            Background cosmology, cosmological parameters, and the species
-            registry for coupled fluids (use ``args.BG``, ``args.params``,
-            ``args.species_list``, ``args.species_dict``)
-
+        Follows Ma & Bertschinger (1995), ApJ 455, 7 (arXiv:astro-ph/9506072).
+        The per-momentum-bin Psi_l hierarchy is their Eq. (56), truncated with
+        their Eq. (58);
+        the momentum-integrated delta/theta/sigma perturbations
+        are their Eq. (55);
         Returns:
-        --------
-        array
             Time derivatives of perturbation modes (units: 1/Mpc for kPsi1, else dimensionless)
         """
         BG, params = args.BG, args.params
@@ -476,7 +397,7 @@ class MassiveNeutrino(Fluid):
         for i in range(3):
             q = self.q_3p[i]
             epsilon = jnp.sqrt(q**2 + x**2)
-            dlnf0_dlnq = -q / (1 + jnp.exp(-q))
+            dlnf0_dlnq = self.dlnf0_dlnq_3p[i]
 
             # NOTE: The entries are [Psi0, k * Psi1, Psi2, ...]. If accessing Psi1 make sure to divide out k
             L = (
@@ -523,25 +444,22 @@ class MassiveNeutrino(Fluid):
 
         return jnp.concatenate(bins)
 
-    def rho_delta(self, lna: ArrayLike, y: Array, args: FluidParams) -> Array | float:
+    def rho_delta(
+        self, lna: ArrayLike, y: Array, args: PerturbationContext
+    ) -> Array | float:
         """
         Compute massive neutrino density perturbation.
 
-        Parameters:
-        -----------
-        lna : float
-            Logarithm of scale factor
-        y : array
-            Perturbation mode values
-        args : mapping
-            Cosmological parameters (params)
-
         Returns:
-        --------
-        float
-            Density perturbation (units: eV cm^{-3})
+           Density perturbation (units: eV cm^{-3})
         """
-        params = args
+        return self._rho_delta(lna, y, args.params)
+
+    def _rho_delta(
+        self, lna: ArrayLike, y: Array, params: FluidParams
+    ) -> Array | float:
+        # Params-only core, shared with output_perturbations (whose OutputArgs
+        # carries no species registry to build a full context from).
         a = jnp.exp(lna)
         T = params["T_nu_massive"] * params["TCMB0"] / a  # (N,)
         x = params["m_nu_massive"] / T  # (N,)
@@ -565,26 +483,19 @@ class MassiveNeutrino(Fluid):
         )
 
     def rho_plus_P_theta(
-        self, lna: ArrayLike, y: Array, args: FluidParams
+        self, lna: ArrayLike, y: Array, args: PerturbationContext
     ) -> Array | float:
         """
         Compute massive neutrino velocity perturbation.
 
-        Parameters:
-        -----------
-        lna : float
-            Logarithm of scale factor
-        y : array
-            Perturbation mode values
-        args : mapping
-            Cosmological parameters (params)
-
         Returns:
-        --------
-        float
             Velocity perturbation (units: eV cm^{-3} Mpc^{-1})
         """
-        params = args
+        return self._rho_plus_P_theta(lna, y, args.params)
+
+    def _rho_plus_P_theta(
+        self, lna: ArrayLike, y: Array, params: FluidParams
+    ) -> Array | float:
         a = jnp.exp(lna)
         T = params["T_nu_massive"] * params["TCMB0"] / a  # (N,)
 
@@ -606,26 +517,19 @@ class MassiveNeutrino(Fluid):
         )
 
     def rho_plus_P_sigma(
-        self, lna: ArrayLike, y: Array, args: FluidParams
+        self, lna: ArrayLike, y: Array, args: PerturbationContext
     ) -> Array | float:
         """
         Compute massive neutrino shear perturbation.
 
-        Parameters:
-        -----------
-        lna : float
-            Logarithm of scale factor
-        y : array
-            Perturbation mode values
-        args : mapping
-            Cosmological parameters (params)
-
         Returns:
-        --------
-        float
             Shear perturbation (units: eV cm^{-3})
         """
-        params = args
+        return self._rho_plus_P_sigma(lna, y, args.params)
+
+    def _rho_plus_P_sigma(
+        self, lna: ArrayLike, y: Array, params: FluidParams
+    ) -> Array | float:
         a = jnp.exp(lna)
         T = params["T_nu_massive"] * params["TCMB0"] / a  # (N,)
         x = params["m_nu_massive"] / T  # (N,)
@@ -659,13 +563,13 @@ class MassiveNeutrino(Fluid):
         rho = vmap(self.rho, in_axes=(0, None))(lna, params)  # (Nlna,)
         rhoP = rho + vmap(self.P, in_axes=(0, None))(lna, params)
 
-        rho_delta = vmap(self.rho_delta, in_axes=(0, 1, None))(
+        rho_delta = vmap(self._rho_delta, in_axes=(0, 1, None))(
             lna, modes, params
         )  # (Nlna, Nk)
-        rho_P_theta = vmap(self.rho_plus_P_theta, in_axes=(0, 1, None))(
+        rho_P_theta = vmap(self._rho_plus_P_theta, in_axes=(0, 1, None))(
             lna, modes, params
         )
-        rho_P_sigma = vmap(self.rho_plus_P_sigma, in_axes=(0, 1, None))(
+        rho_P_sigma = vmap(self._rho_plus_P_sigma, in_axes=(0, 1, None))(
             lna, modes, params
         )
 

@@ -1,6 +1,6 @@
 """
 Baryons. Coupled to the Photon fluid at runtime via species_dict
-(a name lookup, deliberately not an import).
+    Follows Ma & Bertschinger (1995), ApJ 455, 7 (arXiv:astro-ph/9506072).
 """
 
 from typing import TYPE_CHECKING
@@ -18,18 +18,7 @@ if TYPE_CHECKING:
 
 class Baryon(StandardFluid):
     """
-    Baryon fluid species implementation.
-
     Non-relativistic baryons with density and velocity perturbations.
-
-    Methods:
-    --------
-    rho : Compute baryon density (units: eV cm^{-3})
-    P : Compute baryon pressure (units: eV cm^{-3})
-    cs2 : Compute sound speed squared (units: dimensionless)
-    mean_mass : Compute mean baryon mass (units: eV)
-    y_ini : Compute initial perturbation conditions
-    y_prime : Compute perturbation time derivatives
     """
 
     name = "Baryon"
@@ -43,16 +32,7 @@ class Baryon(StandardFluid):
         """
         Compute baryon density.
 
-        Parameters:
-        -----------
-        lna : float
-            Logarithm of scale factor
-        args : mapping
-            Cosmological parameters (params)
-
         Returns:
-        --------
-        float
             Baryon density (units: eV cm^{-3})
         """
         return (
@@ -63,43 +43,24 @@ class Baryon(StandardFluid):
 
     def P(self, lna: ArrayLike, args: FluidParams) -> Array | float:
         """
-        Compute baryon pressure.
+        Baryon pressure is neglected for SM baryons;
 
         Returns:
            Baryon pressure (units: eV cm^{-3})
 
-        Notes:
-        ------
-        Baryon pressure is neglected, standard practice for SM baryons;
         """
         return 0.0
 
     def cs2(self, lna: ArrayLike, args: PerturbationContext) -> Array:
         """
-        Compute sound speed squared.
-
-        Parameters:
-        -----------
-        lna : float
-            Logarithm of scale factor
-        args : PerturbationContext
-            Background cosmology, cosmological parameters, and the species
-            registry for coupled fluids (use ``args.BG``, ``args.params``,
-            ``args.species_list``, ``args.species_dict``)
-
-        Returns:
-        --------
-        float
-            Sound speed squared (units: dimensionless)
-
-        Notes:
-        ------
         Adiabatic sound speed squared, from Eq. (68) of Ma & Bertschinger
         (1995), arXiv:astro-ph/9506072, with the baryon-temperature derivative
-        substituted analytically from the Compton-heating evolution equation.
-        Although we can neglect the pressure, this term is important for perturbation growth
-        during recombination. During reionization this cs2 is negative. This is not physical
-        but it should not matter for cosmology.
+        substituted analytically from the Compton-heating evolution equation
+        (their Eq. 69).
+
+         Returns:
+            Sound speed squared (units: dimensionless)
+
         """
         BG, params = args.BG, args.params
         # Get photon class from list
@@ -134,22 +95,11 @@ class Baryon(StandardFluid):
     ) -> Array:
         """
         Compute mean baryon mass at given redshift.
-
-        Parameters:
-        -----------
-        lna : float
-            Logarithm of scale factor
-        args : tuple
-            Background cosmology and cosmological parameters (BG, params)
+        Defined to be mu = rho_b / n_b = rho_b / (nH + nHe + ne)
 
         Returns:
-        --------
-        float
             Mean baryon mass (units: eV)
 
-        Notes:
-        ------
-        Defined to be mu = rho_b / n_b = rho_b / (nH + nHe + ne)
         """
         BG, params = args
         denom = (1.0 + BG.xe(lna)) * (
@@ -159,20 +109,11 @@ class Baryon(StandardFluid):
 
     def y_ini(self, k: ArrayLike, tau_ini: ArrayLike, args: FluidParams) -> Array:
         """
-        Compute initial conditions for baryon perturbations.
-
-        Parameters:
-        -----------
-        k : float
-            Wavenumber (units: Mpc^{-1})
-        tau_ini : float
-            Initial conformal time (units: Mpc)
-        args : mapping
-            Cosmological parameters (params)
+        The adiabatic initial conditions are M&B  Eq. (96) with C = 1/2
+        (delta_b = 3/4*delta_g, theta_b = theta_g), plus the next-order om*tau
+        corrections used by CLASS (perturbations.c, adiabatic ICs).
 
         Returns:
-        --------
-        array
             Initial perturbation mode values (units: 1/Mpc for theta, else dimensionless)
         """
         params = args
@@ -205,26 +146,11 @@ class Baryon(StandardFluid):
         """
         Compute time derivatives of baryon perturbations.
 
-        Parameters:
-        -----------
-        k : float
-            Wavenumber (units: Mpc^{-1})
-        lna : float
-            Logarithm of scale factor
-        metric_h_prime : float
-            Derivative of metric h
-        metric_eta_prime : float
-            Derivative of metric eta
-        y : array
-            Current perturbation mode values
-        args : PerturbationContext
-            Background cosmology, cosmological parameters, and the species
-            registry for coupled fluids (use ``args.BG``, ``args.params``,
-            ``args.species_list``, ``args.species_dict``)
+        Follows Ma & Bertschinger (1995), ApJ 455, 7 (arXiv:astro-ph/9506072).
+        Evolution is their Eq. (66) with R = 4*rho_g/(3*rho_b) and
+        tau_c = 1/(a*n_e*sigma_T)
 
         Returns:
-        --------
-        array
             Time derivatives of perturbation modes (units: 1/Mpc for theta, else dimensionless)
         """
         BG, params = args.BG, args.params

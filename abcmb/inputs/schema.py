@@ -180,17 +180,19 @@ OPTION_SCHEMA = (
         "l_max_g",
         12,
         int,
-        "Photon temperature hierarchy cutoff.",
+        "Photon temperature hierarchy cutoff (min 4: delta/theta/sigma/F3 "
+        "are named modes, so the truncation slot starts at l=4).",
         group=Group.HIERARCHY,
-        bounds=(2, None),
+        bounds=(4, None),
     ),
     Spec(
         "l_max_pol_g",
         10,
         int,
-        "Photon polarization hierarchy cutoff.",
+        "Photon polarization hierarchy cutoff (min 3: the Thomson source "
+        "spans G0..G2, so the truncation slot starts at l=3).",
         group=Group.HIERARCHY,
-        bounds=(2, None),
+        bounds=(3, None),
     ),
     Spec(
         "l_max_massless_nu",

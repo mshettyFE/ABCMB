@@ -12,14 +12,7 @@ from .base import BackgroundFluid, FluidParams
 
 class DarkEnergy(BackgroundFluid):
     """
-    Dark energy fluid species implementation.
-
     Represents a constant energy density fluid with negative pressure.
-
-    Methods:
-    --------
-    rho : Compute dark energy density (units: eV cm^{-3})
-    P : Compute dark energy pressure (units: eV cm^{-3})
     """
 
     name = "DarkEnergy"

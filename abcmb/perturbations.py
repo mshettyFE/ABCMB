@@ -288,6 +288,10 @@ class PerturbationEvolver(eqx.Module):
         aH = BG.aH(lna, params)
         metric_eta = y[0]
 
+        # The single fluid-facing context, shared by the rho_* aggregates
+        # here and the y_prime calls below.
+        ctx = PerturbationContext(BG, params, self.species_list, self.species_dict)
+
         # Metric perturbation derivatives
         sum_rho_delta = 0.0
         sum_rho_plus_P_theta = 0.0
@@ -295,9 +299,9 @@ class PerturbationEvolver(eqx.Module):
         for i in range(len(self.species_list)):
             species = self.species_list[i]
             # If species has density perturbation, add to total.
-            sum_rho_delta += species.rho_delta(lna, y, params)
+            sum_rho_delta += species.rho_delta(lna, y, ctx)
             # If species has velocity perturbation, add to total.
-            sum_rho_plus_P_theta += species.rho_plus_P_theta(lna, y, params)
+            sum_rho_plus_P_theta += species.rho_plus_P_theta(lna, y, ctx)
 
         metric_h_prime = (
             2.0
@@ -319,11 +323,10 @@ class PerturbationEvolver(eqx.Module):
         )
 
         # Now loop over all species and assemble their respective y_primes
-        args = PerturbationContext(BG, params, self.species_list, self.species_dict)
         y_prime = jnp.array([metric_eta_prime])
         for i in range(len(self.species_list)):
             species = self.species_list[i]
-            piece = species.y_prime(k, lna, metric_h_prime, metric_eta_prime, y, args)
+            piece = species.y_prime(k, lna, metric_h_prime, metric_eta_prime, y, ctx)
             # Same static layout check as in initial_conditions_one_k.
             # OK since error on static data. Gets shaken out upon tracing
             if piece.shape != (species.num_equations,):
@@ -454,15 +457,15 @@ class PerturbationEvolver(eqx.Module):
         # role needs cs2 and the standard layout, the Photon role the layout.
         assert isinstance(baryon, Baryon)
         assert isinstance(photon, StandardFluid)
-        delta_b = baryon.get_delta(lna, modes, params)
-        theta_b = baryon.get_theta(lna, modes, params)
-        theta_g = photon.get_theta(lna, modes, params)
+        ctx = PerturbationContext(BG, params, self.species_list, self.species_dict)
+        delta_b = baryon.get_delta(lna, modes, ctx)
+        theta_b = baryon.get_theta(lna, modes, ctx)
+        theta_g = photon.get_theta(lna, modes, ctx)
 
         karr = k[None, :]
         a = jnp.exp(lna)[:, None]
         # Background/species quantities on the output lna grid: all follow
         # the scalar contract, so batching is an explicit vmap here.
-        ctx = PerturbationContext(BG, params, self.species_list, self.species_dict)
         aH = vmap(lambda l: BG.aH(l, params))(lna)[:, None]
         cs2 = vmap(lambda l: baryon.cs2(l, ctx))(lna)[:, None]
         R = (
@@ -488,13 +491,13 @@ class PerturbationEvolver(eqx.Module):
 
         for s in self.species_list:
             if s.num_equations > 0:
-                rho_delta = vmap(s.rho_delta, in_axes=(0, 1, None))(lna, modes, params)
+                rho_delta = vmap(s.rho_delta, in_axes=(0, 1, None))(lna, modes, ctx)
                 sum_rho_delta += rho_delta
                 sum_rho_plus_P_theta += vmap(s.rho_plus_P_theta, in_axes=(0, 1, None))(
-                    lna, modes, params
+                    lna, modes, ctx
                 )
                 sum_rho_plus_P_sigma += vmap(s.rho_plus_P_sigma, in_axes=(0, 1, None))(
-                    lna, modes, params
+                    lna, modes, ctx
                 )
 
                 if s.is_matter:

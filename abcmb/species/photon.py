@@ -15,26 +15,16 @@ from .base import FluidParams, OutputArgs, PerturbationContext, StandardFluid
 
 class Photon(StandardFluid):
     """
-    Photon fluid species implementation.
 
     Relativistic photons with temperature and polarization Boltzmann hierarchies.
 
-    Attributes:
-    -----------
-    num_F_ell_modes : int
-        Number of temperature multipole moments in Boltzmann hierarchy
-    num_G_ell_modes : int
-        Number of polarization multipole moments in Boltzmann hierarchy
-
-    Methods:
-    --------
-    rho : Compute photon density (units: eV cm^{-3})
-    P : Compute photon pressure (units: eV cm^{-3})
-    y_ini : Compute initial perturbation conditions
-    y_prime : Compute perturbation time derivatives
+    Notes
+    -----
     """
 
+    # Number of temperature multipole moments in Boltzmann hierarchy
     num_F_ell_modes: int = eqx.field(default=0, static=True)
+    # Number of polarization multipole moments in Boltzmann hierarchy
     num_G_ell_modes: int = eqx.field(default=0, static=True)
     name = "Photon"
     is_matter = False
@@ -49,16 +39,7 @@ class Photon(StandardFluid):
         """
         Compute photon density.
 
-        Parameters:
-        -----------
-        lna : float
-            Logarithm of scale factor
-        args : mapping
-            Cosmological parameters (params)
-
         Returns:
-        --------
-        float
             Photon density (units: eV cm^{-3})
         """
         params = args
@@ -71,16 +52,7 @@ class Photon(StandardFluid):
         """
         Compute photon pressure.
 
-        Parameters:
-        -----------
-        lna : float
-            Logarithm of scale factor
-        args : mapping
-            Cosmological parameters (params)
-
         Returns:
-        --------
-        float
             Photon pressure (units: eV cm^{-3})
         """
         params = args
@@ -89,19 +61,12 @@ class Photon(StandardFluid):
     def y_ini(self, k: ArrayLike, tau_ini: ArrayLike, args: FluidParams) -> Array:
         """
         Compute initial conditions for photon perturbations.
-
-        Parameters:
-        -----------
-        k : float
-            Wavenumber (units: Mpc^{-1})
-        tau_ini : float
-            Initial conformal time (units: Mpc)
-        args : mapping
-            Cosmological parameters (params)
+        Follows Ma & Bertschinger (1995), ApJ 455, 7 (arXiv:astro-ph/9506072).
+        The  adiabatic initial conditions are their Eq. (96) with C = 1/2, plus the
+        next-order om*tau corrections used by CLASS (perturbations.c,
+        adiabatic ICs: delta_g, theta_g).
 
         Returns:
-        --------
-        array
             Initial perturbation mode values (units: 1/Mpc for theta, else dimensionless)
         """
         params = args
@@ -135,27 +100,12 @@ class Photon(StandardFluid):
     ) -> Array:
         """
         Compute time derivatives of photon perturbations.
-
-        Parameters:
-        -----------
-        k : float
-            Wavenumber (units: Mpc^{-1})
-        lna : float
-            Logarithm of scale factor
-        metric_h_prime : float
-            Derivative of metric h
-        metric_eta_prime : float
-            Derivative of metric eta
-        y : array
-            Current perturbation mode values
-        args : PerturbationContext
-            Background cosmology, cosmological parameters, and the species
-            registry for coupled fluids (use ``args.BG``, ``args.params``,
-            ``args.species_list``, ``args.species_dict``)
+        Follows Ma & Bertschinger (1995), ApJ 455, 7 (arXiv:astro-ph/9506072).
+        The temperature + polarization hierarchies with Thomson coupling are
+        their Eq. (63) (the [1, 0, 0.2] polarization source is
+        delta_l0 + delta_l2/5), truncated at l_max with their Eq. (65).
 
         Returns:
-        --------
-        array
             Time derivatives of perturbation modes (units: 1/Mpc for theta, else dimensionless)
         """
         BG, params = args.BG, args.params
