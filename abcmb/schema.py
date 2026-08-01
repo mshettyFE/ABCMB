@@ -377,6 +377,14 @@ OPTION_SCHEMA = (
         choices=("auto", *(str(c) for c in KBatchStrategy)),
     ),
     Spec(
+        "lna_tau_points",
+        10000,
+        int,
+        "Points of the conformal-time tabulation grid (lna in [-33, 0]).",
+        group=Group.SOLVER,
+        bounds=(2, None),
+    ),
+    Spec(
         "lna_output_points",
         500,
         int,

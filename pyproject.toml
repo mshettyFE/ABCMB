@@ -113,6 +113,7 @@ ignore = ["E741"]
 # files using shaped annotations rather than turned off project-wide.
 "abcmb/ABCMBTools.py" = ["F722"]
 "abcmb/model_setup.py" = ["F722"]
+"abcmb/recomb_interface.py" = ["F722"]
 
 [tool.pyright]
 # Type-check ABCMB's own code; vendored companion codes (LINX, HyRex) and

@@ -21,7 +21,7 @@ from . import ABCMBTools as tools
 from . import constants as cnst
 from .hyrex import recomb_functions
 from .hyrex.array_with_padding import array_with_padding
-from .hyrex.hyrex import RecombInputs
+from .recomb_interface import RecombInputs
 from .species import Fluid
 
 if TYPE_CHECKING:
@@ -33,10 +33,9 @@ config.update("jax_enable_x64", True)
 
 class BackgroundPreRecomb(eqx.Module):
     """
-    Pre-recombination background-cosmology object.
-
-    Holds everything HyRex needs to run on CPU: (conformal-time tabulation,
-    species list, and HyRex input arrays via ``RecombInputs`` object).
+    Pre-recombination background-cosmology object: the ionization-independent
+    part of the background, computed before the recombination solver runs
+    (its quantities are valid at all times).
 
     Attributes:
     -----------
@@ -44,52 +43,36 @@ class BackgroundPreRecomb(eqx.Module):
         A list of all fluids in the cosmology
     lna_tau_tab : Array
         Log scale factor axis used to tabulate conformal time
+        (density set by the ``lna_tau_points`` option)
     tau_tab : Array
         Tabulated conformal time.
     tau0 : float
         Conformal time today in Mpc.
-    recomb_inputs : RecombInputs
-        Bundle of background quantities (TCMB, nH, H) sampled on
-        ``RecModel.lna_axis_full``; consumed by HyRex.
     adjoint : type[diffrax.AbstractAdjoint]
         Adjoint mode for diffrax solves (static field).
 
-    Methods:
-    --------
-    rho_tot : Compute total energy density (units: eV cm^{-3})
-    P_tot : Compute total pressure (units: eV cm^{-3})
-    H : Compute Hubble parameter (units: s^{-1})
-    aH : Compute conformal Hubble parameter (units: Mpc^{-1})
-    aH_prime : Compute derivative of conformal Hubble (units: Mpc^{-1})
-    d2adtau2_over_a : Compute second derivative of scale factor (units: Mpc^{-2})
-    tau : Compute conformal time (units: Mpc)
-    nH : Compute hydrogen number density (units: cm^{-3})
-    TCMB : Compute CMB temperature (units: eV)
-    R_ratio_lna : Compute baryon drag ratio (units: dimensionless)
     """
 
     species_list: tuple[Fluid, ...]
 
-    lna_tau_tab = jnp.linspace(-33.0, 0.0, 10000)  # Axis for tabulating conformal time.
+    lna_tau_tab: Array  # Axis for tabulating conformal time.
     tau_tab: Array  # Tabulated conformal time.
     tau0: Array  # Conformal time today
-
-    recomb_inputs: "RecombInputs"
 
     adjoint: type[diffrax.AbstractAdjoint] = eqx.field(static=True)
 
     def __init__(
         self,
-        params,
-        species_list,
-        RecModel,
+        params: "Params",
+        species_list: tuple[Fluid, ...],
         adjoint: type[diffrax.AbstractAdjoint] = ForwardMode,
-    ):
+        lna_tau_points: int = 10000,
+    ) -> None:
         """
         Initialize pre-recombination background.
 
-        Tabulates conformal time and builds the RecombInputs object for
-        HyRex.
+        Tabulates conformal time on ``lna_tau_points`` points in
+        lna = [-33, 0].
 
         Parameters:
         -----------
@@ -97,21 +80,102 @@ class BackgroundPreRecomb(eqx.Module):
             Cosmological parameters
         species_list : tuple
             List of fluid species for energy density calculations
-        RecModel : hyrex.recomb_model
-            Recombination module for computing xe and Tm histories
         adjoint : type[diffrax.AbstractAdjoint], optional
             Adjoint class for diffrax solves (default: ForwardMode)
+        lna_tau_points : int, optional
+            Points of the conformal-time tabulation grid (default: 10000)
         """
         self.adjoint = adjoint
         self.species_list = species_list
 
+        self.lna_tau_tab = jnp.linspace(-33.0, 0.0, lna_tau_points)
         self.tau_tab = self._tabulate_conformal_time(params)
         self.tau0 = self.tau(0.0)
 
-        # Bundle the background quantities HyRex needs onto its sampling
-        # grid (acccording to the input RecModel)
+    def _tabulate_conformal_time(self, params: "Params"):
+        r"""
+        Tabulate conformal time as function of ln(a).
+
+        Integrates d\tau/d(ln a) = 1/aH from early times to today
+        using radiation-dominated initial conditions. We stitch an
+        analytic early-time solution to a Diffrax dense
+        interpolation, taking care not to evaluate out of bounds.
+
+        Parameters:
+        -----------
+        params : dict
+            Cosmological parameters
+
+        Returns:
+        --------
+        array
+            Tabulated conformal time values (units: Mpc)
+        """
+
+        lna_cut = -16.1  # use analytic approx before this
+
+        # Analytic early-time approximation
+        def tau_approx(lna):
+            return (
+                jnp.exp(lna)
+                / (cnst.H0_over_h / cnst.c_Mpc_over_s)
+                / jnp.sqrt(params["omega_r"])
+            )
+
+        lna_end = self.lna_tau_tab[-1]
+
+        # ---- Diffrax solve (dense interpolation) ----
+        term = ODETerm(self._dtau_dlna)
+        controller = PIDController(rtol=1e-8, atol=1e-8)
+        saveat = SaveAt(dense=True)
+        adjoint = self.adjoint()
+
+        sol = diffeqsolve(
+            term,
+            solver=Kvaerno5(),
+            t0=lna_cut,
+            t1=lna_end,
+            dt0=1e-5,
+            y0=tau_approx(lna_cut),
+            saveat=saveat,
+            stepsize_controller=controller,
+            args=params,
+            adjoint=adjoint,
+        )
+
+        # Numerical jitter causes this interpolation to go out of bounds on
+        # some machines, so we do some extra work to safeguard that here:
+
+        # Strictly inside [lna_cut, lna_end); avoid touching internal sol.ts (may be None).
+        # nextafter gets the next representable float below lna_end to ensure in-bounds.
+        lna_hi = jnp.nextafter(lna_end, -jnp.inf)
+
+        def _tau_from_sol(l):
+            l_in = jnp.clip(l, lna_cut, lna_hi)
+            return sol.evaluate(l_in)
+
+        def _tau_combined(l):
+            # cond is faster than where since untaken branch is not evaluated
+            return lax.cond(l > lna_cut, _tau_from_sol, tau_approx, l)
+
+        tau_tab = vmap(_tau_combined)(self.lna_tau_tab)
+
+        # Replace any remaining non-finite entries with analytic fallback
+        tau_tab = jnp.where(
+            jnp.isfinite(tau_tab), tau_tab, vmap(tau_approx)(self.lna_tau_tab)
+        )
+
+        return tau_tab
+
+    @eqx.filter_jit
+    def make_recomb_inputs(self, RecModel, params: "Params") -> RecombInputs:
+        """
+        Bundle the background quantities HyRex needs (TCMB, nH, H) onto the
+        recombination model's sampling grid -- the handoff across the
+        jit/device boundary (see abcmb.recomb_interface).
+        """
         lna_axis = RecModel.lna_axis_full
-        self.recomb_inputs = RecombInputs(
+        return RecombInputs(
             lna_grid=lna_axis,
             TCMB_arr=vmap(self.TCMB, in_axes=[0, None])(lna_axis, params),
             nH_arr=vmap(self.nH, in_axes=[0, None])(lna_axis, params),
@@ -280,81 +344,6 @@ class BackgroundPreRecomb(eqx.Module):
         params = args
         return 1.0 / self.aH(lna, params)
 
-    def _tabulate_conformal_time(self, params: "Params"):
-        """
-        Tabulate conformal time as function of ln(a).
-
-        Integrates dτ/d(ln a) = 1/aH from early times to today
-        using radiation-dominated initial conditions. We stitch an
-        analytic early-time solution to a Diffrax dense
-        interpolation, taking care not to evaluate out of bounds.
-
-        Parameters:
-        -----------
-        params : dict
-            Cosmological parameters
-
-        Returns:
-        --------
-        array
-            Tabulated conformal time values (units: Mpc)
-        """
-
-        lna_cut = -16.1  # use analytic approx before this
-
-        # Analytic early-time approximation
-        def tau_approx(lna):
-            return (
-                jnp.exp(lna)
-                / (cnst.H0_over_h / cnst.c_Mpc_over_s)
-                / jnp.sqrt(params["omega_r"])
-            )
-
-        lna_end = self.lna_tau_tab[-1]
-
-        # ---- Diffrax solve (dense interpolation) ----
-        term = ODETerm(self._dtau_dlna)
-        controller = PIDController(rtol=1e-8, atol=1e-8)
-        saveat = SaveAt(dense=True)
-        adjoint = self.adjoint()
-
-        sol = diffeqsolve(
-            term,
-            solver=Kvaerno5(),
-            t0=lna_cut,
-            t1=lna_end,
-            dt0=1e-5,
-            y0=tau_approx(lna_cut),
-            saveat=saveat,
-            stepsize_controller=controller,
-            args=params,
-            adjoint=adjoint,
-        )
-
-        # Numerical jitter causes this interpolation to go out of bounds on
-        # some machines, so we do some extra work to safeguard that here:
-
-        # Strictly inside [lna_cut, lna_end); avoid touching internal sol.ts (may be None).
-        # nextafter gets the next representable float below lna_end to ensure in-bounds.
-        lna_hi = jnp.nextafter(lna_end, -jnp.inf)
-
-        def _tau_from_sol(l):
-            l_in = jnp.clip(l, lna_cut, lna_hi)
-            return sol.evaluate(l_in)
-
-        def _tau_combined(l):
-            # cond is faster than where since untaken branch is not evaluated
-            return lax.cond(l > lna_cut, _tau_from_sol, tau_approx, l)
-
-        tau_tab = vmap(_tau_combined)(self.lna_tau_tab)
-
-        # Replace any remaining non-finite entries with analytic fallback
-        tau_tab = jnp.where(
-            jnp.isfinite(tau_tab), tau_tab, vmap(tau_approx)(self.lna_tau_tab)
-        )
-
-        return tau_tab
-
     def tau(self, lna):
         """
         Compute conformal time.
@@ -486,9 +475,6 @@ class Background(BackgroundPreRecomb):
         Tabulated conformal time.
     tau0 : float
         Conformal time today in Mpc.
-    recomb_inputs : RecombInputs
-        Bundle of background quantities (TCMB, nH, H) sampled on
-        ``RecModel.lna_axis_full``; consumed by HyRex.
     adjoint : type[diffrax.AbstractAdjoint]
         Adjoint mode for diffrax solves (static field).
     xe_tab : array_with_padding
@@ -514,23 +500,6 @@ class Background(BackgroundPreRecomb):
     lna_visibility_stop : float
         Log scale factor at which to stop integrating T1, T2, and E sources
         due to small visibility functions. Only used for l<400.
-
-    Methods:
-    --------
-    rho_tot : Compute total energy density (units: eV cm^{-3})
-    P_tot : Compute total pressure (units: eV cm^{-3})
-    H : Compute Hubble parameter (units: s^{-1})
-    aH : Compute conformal Hubble parameter (units: Mpc^{-1})
-    aH_prime : Compute derivative of conformal Hubble (units: Mpc^{-1})
-    d2adtau2_over_a : Compute second derivative of scale factor (units: Mpc^{-2})
-    tau : Compute conformal time (units: Mpc)
-    xe : Compute free electron fraction (units: dimensionless)
-    Tm : Compute matter temperature (units: eV)
-    tau_c : Compute Thomson scattering time (units: Mpc)
-    expmkappa : Compute exp(-kappa) (units: dimensionless)
-    visibility : Compute visibility function (units: Mpc^{-1})
-    z_d : Compute baryon decoupling redshift (units: dimensionless)
-    rs_d : Compute sound horizon at decoupling (units: Mpc)
     """
 
     xe_tab: "array_with_padding"
@@ -564,7 +533,7 @@ class Background(BackgroundPreRecomb):
         -----------
         pre_BG : BackgroundPreRecomb
             Output of the pre-recomb stage; provides species_list,
-            tau_tab, tau0, recomb_inputs, adjoint.
+            lna_tau_tab, tau_tab, tau0, adjoint.
         recomb_output : tuple
             HyRex output ``(xe, lna_xe, Tm, lna_Tm)`` quadruple
         params : dict
@@ -575,9 +544,9 @@ class Background(BackgroundPreRecomb):
         # Copy pre-recomb fields onto self.
         self.adjoint = pre_BG.adjoint
         self.species_list = pre_BG.species_list
+        self.lna_tau_tab = pre_BG.lna_tau_tab
         self.tau_tab = pre_BG.tau_tab
         self.tau0 = pre_BG.tau0
-        self.recomb_inputs = pre_BG.recomb_inputs
 
         # Unpack HyRex output and apply reionization.
         xe, self.lna_xe_tab, self.Tm_tab, self.lna_Tm_tab = recomb_output

@@ -86,6 +86,7 @@ transfer_start_threshold = 0.008  # (option, float) aH*tau_c value defining the 
 [solver]
 max_steps_PE = 2048        # (option, int) Max diffrax steps for the perturbation evolver.
 k_batch_strategy = "auto"  # (option, str) k-mode batching: 'scan' (sequential, minimal total work; best on CPU), 'vmap' (lockstep batch; best on GPU), 'auto' (pick by JAX backend). The two paths differ at solver-tolerance level (adaptive steps).
+lna_tau_points = 10000     # (option, int) Points of the conformal-time tabulation grid (lna in [-33, 0]).
 lna_output_points = 500    # (option, int) Time-grid points of the perturbation output table (transfer start to today); source integrations interpolate from this grid.
 lna_lensing_points = 500   # (option, int) Time-grid points of the lensing-potential Cl integration (recombination to today; used only when lensing=True).
 k_split_PE = 0.01          # (option, float) k threshold splitting solver tolerances.

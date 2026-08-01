@@ -40,6 +40,7 @@ class Options(TypedDict):
     transfer_start_threshold: float
     max_steps_PE: int
     k_batch_strategy: str
+    lna_tau_points: int
     lna_output_points: int
     lna_lensing_points: int
     k_split_PE: float

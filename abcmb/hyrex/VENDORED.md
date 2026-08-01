@@ -19,9 +19,11 @@ graph with the duplicate background removed.
 
 ## Local modifications (vs upstream HEAD)
 
-- **`cosmology.py` deleted**, replaced by the `RecombInputs` bundle in
-  `hyrex.py`: ABCMB's `BackgroundPreRecomb` computes TCMB/nH/H on HyRex's
-  grid and injects them, making ABCMB the single background authority.
+- **`cosmology.py` deleted**, replaced by injection: ABCMB's
+  `BackgroundPreRecomb.make_recomb_inputs` computes TCMB/nH/H on HyRex's
+  grid and passes them in as a `RecombInputs` bundle (defined in
+  `abcmb/recomb_interface.py` -- host-side code, not part of this fork),
+  making ABCMB the single background authority.
 - **Constants unified**: `from abcmb import constants as cnst` replaces
   upstream's own constants (one source of physical constants across the
   fused graph).

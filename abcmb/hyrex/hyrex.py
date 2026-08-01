@@ -4,90 +4,15 @@ from jax import config
 import equinox as eqx
 from diffrax import Kvaerno3, ForwardMode
 
-from functools import partial
-
 from .hydrogen import hydrogen_model
 from .helium import helium_model
 from .array_with_padding import array_with_padding
-from ..ABCMBTools import fast_interp
 config.update("jax_enable_x64", True)
 
+# RecombInputs -- the bundle of background quantities this model consumes --
+# is ABCMB's host-side handoff type and lives in abcmb.recomb_interface
+# (it was an ABCMB fork addition, not upstream HyRex code).
 
-class RecombInputs(eqx.Module):
-    """
-    Bundle of pre-recombination background quantities sampled on a 
-    fixed lna grid for computing recombination.
-
-    Attributes
-    ----------
-    lna_grid : jnp.array
-        Uniform log scale-factor sampling axis. (units: dimensionless)
-    TCMB_arr : jnp.array
-        Photon-bath temperature TCMB(lna) (units: eV)
-    nH_arr : jnp.array
-        Hydrogen number density nH(lna) (units: cm^-3)
-    H_arr : jnp.array
-        Hubble parameter H(lna) (units: s^-1)
-
-    Methods
-    -------
-    TCMB : Linear interpolation of CMB temperature over lna (units: eV)
-    nH : Linear interpolation of hydrogen number density over lna (units: cm^-3)
-    H : Linear interpolation of Hubble over lna (units: s^-1)
-    """
-
-    lna_grid : jnp.array
-    TCMB_arr : jnp.array
-    nH_arr   : jnp.array
-    H_arr    : jnp.array
-
-    def TCMB(self, lna):
-        """
-        Linearly interpolate CMB temperature at lna.
-
-        Parameters:
-        -----------
-        lna : float
-            Logarithm of scale factor.
-
-        Returns:
-        --------
-        float
-            CMB temperature TCMB(lna) (units: eV).
-        """
-        return fast_interp(lna, self.lna_grid[0], self.lna_grid[-1], self.TCMB_arr)
-
-    def nH(self, lna):
-        """
-        Linearly interpolate hydrogen number density at lna.
-
-        Parameters:
-        -----------
-        lna : float
-            Logarithm of scale factor.
-
-        Returns:
-        --------
-        float
-            Hydrogen number density nH(lna) (units: cm^-3).
-        """
-        return fast_interp(lna, self.lna_grid[0], self.lna_grid[-1], self.nH_arr)
-
-    def H(self, lna):
-        """
-        Linearly interpolate Hubble parameter at lna.
-
-        Parameters:
-        -----------
-        lna : float
-            Logarithm of scale factor.
-
-        Returns:
-        --------
-        float
-            Hubble parameter H(lna) (units: s^-1).
-        """
-        return fast_interp(lna, self.lna_grid[0], self.lna_grid[-1], self.H_arr)
 
 class recomb_model(eqx.Module):
     """

@@ -229,9 +229,10 @@ class Model(eqx.Module):
         params = jax.tree_util.tree_map(_to_float, params)
 
         pre_BG = self.get_BG_pre_recomb(params)
+        recomb_inputs = pre_BG.make_recomb_inputs(self.RecModel, params)
 
         cpu_dev = jax.devices("cpu")[0]
-        recomb_inputs_cpu = jax.device_put(pre_BG.recomb_inputs, cpu_dev)
+        recomb_inputs_cpu = jax.device_put(recomb_inputs, cpu_dev)
         params_cpu = jax.device_put(params, cpu_dev)
 
         recomb_output = eqx.filter_jit(self.RecModel, backend="cpu")(
@@ -256,7 +257,8 @@ class Model(eqx.Module):
     @eqx.filter_jit
     def get_BG_pre_recomb(self, params: "Params"):
         """
-        Pre-recomb stage: tabulate conformal time and bundle H, T, nH for recombination.
+        Pre-recomb stage: tabulate conformal time (the HyRex input bundle is
+        produced separately by ``pre_BG.make_recomb_inputs``).
 
         Parameters:
         -----------
@@ -280,7 +282,10 @@ class Model(eqx.Module):
         print("\\_____/      ")
         print("")
         return BackgroundPreRecomb(
-            params, self.species_list, self.RecModel, adjoint=self.adjoint
+            params,
+            self.species_list,
+            adjoint=self.adjoint,
+            lna_tau_points=self.options["lna_tau_points"],
         )
 
     @eqx.filter_jit
