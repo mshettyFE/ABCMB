@@ -208,6 +208,32 @@ def test_k_batch_strategy_option():
         perturbations._k_batch_strategy("vamp")
 
 
+def test_rho_P_follow_lna_shape(lcdm_model):
+    # Contract: background rho/P return arrays of lna's shape
+    import warnings
+
+    import jax.numpy as jnp
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        params = lcdm_model.add_derived_parameters(
+            {
+                "h": 0.6762,
+                "omega_cdm": 0.1193,
+                "omega_b": 0.0225,
+                "A_s": 2.12424e-9,
+                "n_s": 0.9709,
+                "Neff": 3.044,
+                "YHe": 0.245,
+                "tau_reion": 0.0544,
+            }
+        )
+    probe = jnp.zeros((2, 3))
+    for s in lcdm_model.species_list:
+        assert jnp.shape(s.rho(probe, params)) == (2, 3), f"{s.name}.rho"
+        assert jnp.shape(s.P(probe, params)) == (2, 3), f"{s.name}.P"
+
+
 def test_is_neutrino_flags():
     # Opt-in trait: False unless a species declares itself neutrino-like. The
     # two neutrino classes opt in; nothing else does.

@@ -65,23 +65,14 @@ class Baryon(StandardFluid):
         """
         Compute baryon pressure.
 
-        Parameters:
-        ------------
-        lna : float
-            Logarithm of scale factor
-        args : mapping
-            Cosmological parameters (params)
-
         Returns:
-        --------
-        float
-            Baryon pressure (units: eV cm^{-3})
+           Baryon pressure (units: eV cm^{-3})
 
         Notes:
         ------
-        Baryon pressure is neglected, standard practice for SM baryons.
+        Baryon pressure is neglected, standard practice for SM baryons;
         """
-        return 0.0
+        return jnp.zeros(jnp.shape(lna))
 
     def cs2(self, lna: ArrayLike, args: PerturbationContext) -> Array:
         """

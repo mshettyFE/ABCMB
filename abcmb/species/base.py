@@ -101,42 +101,24 @@ class Fluid(eqx.Module):
     def __init__(self, first_idx, options):
         self.first_idx = first_idx
 
-    def rho(self, lna: ArrayLike, args: FluidParams) -> Array | float:
+    def rho(self, lna: ArrayLike, args: FluidParams) -> Array:
         """
-        Calculates the energy density of the fluid species at a given
-        cosmological epoch using the logarithm of the scale factor.
-
-        Parameters:
-        -----------
-        lna : float
-            Logarithm of scale factor
-        args : mapping
-            Cosmological parameters (params)
+         Calculates the energy density of the fluid species at a given
+         cosmological epoch using the logarithm of the scale factor.
 
         Returns:
-        --------
-        float
             Energy density (units: eV cm^{-3})
         """
         raise NotImplementedError(
             "Fluid species must implement an energy density function."
         )
 
-    def P(self, lna: ArrayLike, args: FluidParams) -> Array | float:
+    def P(self, lna: ArrayLike, args: FluidParams) -> Array:
         """
         Calculates the pressure of the fluid species at a given
         cosmological epoch using the logarithm of the scale factor.
 
-        Parameters:
-        -----------
-        lna : float
-            Logarithm of scale factor
-        args : mapping
-            Cosmological parameters (params)
-
         Returns:
-        --------
-        float
             Pressure (units: eV cm^{-3})
         """
         raise NotImplementedError("Fluid species must implement a pressure function.")

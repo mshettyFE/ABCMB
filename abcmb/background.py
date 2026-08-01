@@ -1,9 +1,10 @@
 import os
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, ClassVar, cast
 
 import diffrax
 import equinox as eqx
 import jax.numpy as jnp
+import numpy as np
 import optimistix as optx
 from diffrax import (
     ForwardMode,
@@ -14,8 +15,8 @@ from diffrax import (
     Tsit5,
     diffeqsolve,
 )
-from jax import config, lax, vmap
-from jaxtyping import Array
+from jax import config, vmap
+from jaxtyping import Array, Float
 
 from . import ABCMBTools as tools
 from . import constants as cnst
@@ -26,6 +27,7 @@ from .species import Fluid
 
 if TYPE_CHECKING:
     from ._schema_types import Params
+    from .hyrex.hyrex import recomb_model
 
 file_dir = os.path.dirname(__file__)
 config.update("jax_enable_x64", True)
@@ -36,29 +38,22 @@ class BackgroundPreRecomb(eqx.Module):
     Pre-recombination background-cosmology object: the ionization-independent
     part of the background, computed before the recombination solver runs
     (its quantities are valid at all times).
-
-    Attributes:
-    -----------
-    species_list : tuple
-        A list of all fluids in the cosmology
-    lna_tau_tab : Array
-        Log scale factor axis used to tabulate conformal time
-        (density set by the ``lna_tau_points`` option)
-    tau_tab : Array
-        Tabulated conformal time.
-    tau0 : float
-        Conformal time today in Mpc.
-    adjoint : type[diffrax.AbstractAdjoint]
-        Adjoint mode for diffrax solves (static field).
-
     """
 
     species_list: tuple[Fluid, ...]
+
+    # Endpoints of the conformal-time tabulation grid
+    lna_tau_min: ClassVar[float] = -33.0
+    lna_tau_max: ClassVar[float] = 0.0
+    # Analytic/ODE seam of the tabulation
+    # Guarded by pytests/test_background.py.
+    lna_tau_cut: ClassVar[float] = -20.0
 
     lna_tau_tab: Array  # Axis for tabulating conformal time.
     tau_tab: Array  # Tabulated conformal time.
     tau0: Array  # Conformal time today
 
+    # Solver used by Diffrax
     adjoint: type[diffrax.AbstractAdjoint] = eqx.field(static=True)
 
     def __init__(
@@ -72,13 +67,13 @@ class BackgroundPreRecomb(eqx.Module):
         Initialize pre-recombination background.
 
         Tabulates conformal time on ``lna_tau_points`` points in
-        lna = [-33, 0].
+        lna = [-33, 0] by default.
 
         Parameters:
         -----------
-        params : dict
+        params : Params
             Cosmological parameters
-        species_list : tuple
+        species_list : tuple[Fluid, ...]
             List of fluid species for energy density calculations
         adjoint : type[diffrax.AbstractAdjoint], optional
             Adjoint class for diffrax solves (default: ForwardMode)
@@ -88,33 +83,39 @@ class BackgroundPreRecomb(eqx.Module):
         self.adjoint = adjoint
         self.species_list = species_list
 
-        self.lna_tau_tab = jnp.linspace(-33.0, 0.0, lna_tau_points)
-        self.tau_tab = self._tabulate_conformal_time(params)
+        self.lna_tau_tab = jnp.linspace(
+            self.lna_tau_min, self.lna_tau_max, lna_tau_points
+        )
+        # Static analytic/ODE split index of the grid just built (a Python
+        # int, since it sets slice sizes under jit) -- computed host-side
+        # from the same endpoints and count.
+        n_analytic = int(
+            np.sum(
+                np.linspace(self.lna_tau_min, self.lna_tau_max, lna_tau_points)
+                <= self.lna_tau_cut
+            )
+        )
+        self.tau_tab = self._tabulate_conformal_time(params, n_analytic)
         self.tau0 = self.tau(0.0)
 
-    def _tabulate_conformal_time(self, params: "Params"):
+    def _tabulate_conformal_time(
+        self, params: "Params", n_analytic: int
+    ) -> Float[Array, " n_lna_tau"]:
         r"""
         Tabulate conformal time as function of ln(a).
 
-        Integrates d\tau/d(ln a) = 1/aH from early times to today
-        using radiation-dominated initial conditions. We stitch an
-        analytic early-time solution to a Diffrax dense
-        interpolation, taking care not to evaluate out of bounds.
-
-        Parameters:
-        -----------
-        params : dict
-            Cosmological parameters
-
-        Returns:
-        --------
-        array
-            Tabulated conformal time values (units: Mpc)
+        Integrates d\tau/d(ln a) = 1/aH from early times to today using
+        radiation-dominated initial conditions: grid points before the
+        analytic/ODE seam use the closed-form radiation-domination
+        solution, the rest are saved directly from a Diffrax solve
+        (``SaveAt(ts=...)``) seeded by that solution at the seam, and the
+        two segments are concatenated at a static split index.
         """
 
-        lna_cut = -16.1  # use analytic approx before this
+        lna_cut = self.lna_tau_cut  # see the class-attribute comment
 
-        # Analytic early-time approximation
+        # Analytic early-time approximation; also seeds the solve, so the
+        # two segments agree exactly at the seam.
         def tau_approx(lna):
             return (
                 jnp.exp(lna)
@@ -122,53 +123,29 @@ class BackgroundPreRecomb(eqx.Module):
                 / jnp.sqrt(params["omega_r"])
             )
 
-        lna_end = self.lna_tau_tab[-1]
-
-        # ---- Diffrax solve (dense interpolation) ----
-        term = ODETerm(self._dtau_dlna)
-        controller = PIDController(rtol=1e-8, atol=1e-8)
-        saveat = SaveAt(dense=True)
-        adjoint = self.adjoint()
-
+        # Save directly at the grid points past the cut -- no dense storage,
+        # no post-hoc evaluate, no out-of-bounds guard.
         sol = diffeqsolve(
-            term,
+            ODETerm(self._dtau_dlna),
             solver=Kvaerno5(),
             t0=lna_cut,
-            t1=lna_end,
+            t1=self.lna_tau_max,
             dt0=1e-5,
             y0=tau_approx(lna_cut),
-            saveat=saveat,
-            stepsize_controller=controller,
+            saveat=SaveAt(ts=self.lna_tau_tab[n_analytic:]),
+            stepsize_controller=PIDController(rtol=1e-8, atol=1e-14),
             args=params,
-            adjoint=adjoint,
+            adjoint=self.adjoint(),
         )
 
-        # Numerical jitter causes this interpolation to go out of bounds on
-        # some machines, so we do some extra work to safeguard that here:
-
-        # Strictly inside [lna_cut, lna_end); avoid touching internal sol.ts (may be None).
-        # nextafter gets the next representable float below lna_end to ensure in-bounds.
-        lna_hi = jnp.nextafter(lna_end, -jnp.inf)
-
-        def _tau_from_sol(l):
-            l_in = jnp.clip(l, lna_cut, lna_hi)
-            return sol.evaluate(l_in)
-
-        def _tau_combined(l):
-            # cond is faster than where since untaken branch is not evaluated
-            return lax.cond(l > lna_cut, _tau_from_sol, tau_approx, l)
-
-        tau_tab = vmap(_tau_combined)(self.lna_tau_tab)
-
-        # Replace any remaining non-finite entries with analytic fallback
-        tau_tab = jnp.where(
-            jnp.isfinite(tau_tab), tau_tab, vmap(tau_approx)(self.lna_tau_tab)
+        return jnp.concatenate(
+            [vmap(tau_approx)(self.lna_tau_tab[:n_analytic]), sol.ys]
         )
-
-        return tau_tab
 
     @eqx.filter_jit
-    def make_recomb_inputs(self, RecModel, params: "Params") -> RecombInputs:
+    def make_recomb_inputs(
+        self, RecModel: "recomb_model", params: "Params"
+    ) -> RecombInputs:
         """
         Bundle the background quantities HyRex needs (TCMB, nH, H) onto the
         recombination model's sampling grid -- the handoff across the
@@ -182,112 +159,77 @@ class BackgroundPreRecomb(eqx.Module):
             H_arr=vmap(self.H, in_axes=[0, None])(lna_axis, params),
         )
 
-    def rho_tot(self, lna, params: "Params"):
+    def rho_tot(
+        self,
+        lna: Float[Array, "*batch"] | float,
+        params: "Params",
+    ) -> Float[Array, "*batch"]:
         """
-        Compute total energy density.
-
-        Sums energy density over all species in the universe.
-
-        Parameters:
-        -----------
-        lna : float
-            Logarithm of scale factor
-        params : dict
-            Cosmological parameters
+         Compute total energy density.
 
         Returns:
-        --------
-        float
             Total energy density (units: eV cm^{-3})
         """
-        rho_tot = 0.0
-        for i in range(len(self.species_list)):
-            rho_tot += self.species_list[i].rho(lna, params)
-        return rho_tot
+        return jnp.sum(
+            jnp.asarray([s.rho(lna, params) for s in self.species_list]), axis=0
+        )
 
-    def P_tot(self, lna, params: "Params"):
+    def P_tot(
+        self,
+        lna: Float[Array, "*batch"] | float,
+        params: "Params",
+    ) -> Float[Array, "*batch"]:
         """
-        Compute total pressure.
-
-        Sums pressure over all species in the universe.
-
-        Parameters:
-        -----------
-        lna : float
-            Logarithm of scale factor
-        params : dict
-            Cosmological parameters
+         Compute total pressure.
 
         Returns:
-        --------
-        float
             Total pressure (units: eV cm^{-3})
         """
-        P_tot = 0.0
-        for i in range(len(self.species_list)):
-            P_tot += self.species_list[i].P(lna, params)
-        return P_tot
+        return jnp.sum(
+            jnp.asarray([s.P(lna, params) for s in self.species_list]), axis=0
+        )
 
-    def H(self, lna, params: "Params"):
+    def H(
+        self,
+        lna: Float[Array, "*batch"] | float,
+        params: "Params",
+    ) -> Float[Array, "*batch"]:
         """
         Compute Hubble parameter.
 
-        Uses Einstein equation H = sqrt(8πG/3 ρ_tot) to account for
-        novel species without well-defined density parameters.
-
-        Parameters:
-        -----------
-        lna : float
-            Logarithm of scale factor
-        params : dict
-            Cosmological parameters
-
         Returns:
-        --------
-        float
             Hubble parameter (units: s^{-1})
         """
         return jnp.sqrt(8.0 * jnp.pi * cnst.G * self.rho_tot(lna, params) / 3.0)
 
-    def aH(self, lna, params: "Params"):
-        """
+    def aH(
+        self,
+        lna: Float[Array, "*batch"] | float,
+        params: "Params",
+    ) -> Float[Array, "*batch"]:
+        r"""
         Compute conformal Hubble parameter.
 
-        Calculates conformal Hubble H = a*H = da/dτ where τ is conformal time.
+        Calculates conformal Hubble H = a*H = da/d\tau where \tau is conformal time.
         Uses Mpc units for perturbation calculations.
-
-        Parameters:
-        -----------
-        lna : float
-            Logarithm of scale factor
-        params : dict
-            Cosmological parameters
-
         Returns:
-        --------
-        float
-            Conformal Hubble parameter (units: Mpc^{-1})
+           Conformal Hubble parameter (units: Mpc^{-1})
         """
         return jnp.exp(lna) * self.H(lna, params) / cnst.c_Mpc_over_s
 
-    def aH_prime(self, lna, params: "Params"):
+    def aH_prime(
+        self,
+        lna: Float[Array, "*batch"] | float,
+        params: "Params",
+    ) -> Float[Array, "*batch"]:
         """
         Compute derivative of conformal Hubble parameter.
 
         Uses second Friedmann equation to compute d(aH)/d(ln a).
         See Eq. (20) of Ma & Bertschinger (1995), arXiv:astro-ph/9506072.
 
-        Parameters:
-        -----------
-        lna : float
-            Logarithm of scale factor
-        params : dict
-            Cosmological parameters
-
         Returns:
-        --------
-        float
-            Derivative of conformal Hubble (units: Mpc^{-1})
+           Derivative of conformal Hubble (units: Mpc^{-1})
         """
         return (
             -4.0
@@ -300,97 +242,55 @@ class BackgroundPreRecomb(eqx.Module):
             / cnst.c_Mpc_over_s**2
         )
 
-    def d2adtau2_over_a(self, lna, params: "Params"):
+    def d2adtau2_over_a(
+        self,
+        lna: Float[Array, "*batch"] | float,
+        params: "Params",
+    ) -> Float[Array, "*batch"]:
         """
         Compute second derivative of scale factor.
 
-        Calculates d²a/dτ²/a where τ is conformal time.
-        Appears in perturbation evolution equations.
-
-        Parameters:
-        -----------
-        lna : float
-            Logarithm of scale factor
-        params : dict
-            Cosmological parameters
-
         Returns:
-        --------
-        float
-            Second derivative of scale factor (units: Mpc^{-2})
+           Second derivative of scale factor (units: Mpc^{-2})
         """
         return self.aH(lna, params) ** 2 + self.aH(lna, params) * self.aH_prime(
             lna, params
         )
 
-    def _dtau_dlna(self, lna, y, args):
+    def _dtau_dlna(
+        self,
+        lna: Float[Array, ""] | float,
+        y: Float[Array, ""],
+        args: "Params",
+    ) -> Float[Array, ""]:
         """
         Compute derivative of conformal time with respect to ln(a).
-
-        Parameters:
-        -----------
-        lna : float
-            Logarithm of scale factor
-        y : float
-            Current conformal time value
-        args : dict
-            Cosmological parameters
-
-        Returns:
-        --------
-        float
-            Derivative dτ/d(ln a) (units: Mpc)
         """
         params = args
         return 1.0 / self.aH(lna, params)
 
-    def tau(self, lna):
+    def tau(self, lna: Float[Array, "*batch"] | float) -> Float[Array, "*batch"]:
         """
         Compute conformal time.
 
         Interpolates from pre-tabulated conformal time history.
-        Conformal time τ satisfies dτ = dt/a where t is cosmic time.
-
-        Parameters:
-        -----------
-        lna : float
-            Logarithm of scale factor
-
         Returns:
-        --------
-        float
-            Conformal time (units: Mpc)
-
-        Notes:
-        ------
-        IDEA: Make Background a repeatedly initiated module with both
-        species_list and params stored. Upon initiation, a full history
-        of conformal time is calculated with diffrax and stored for
-        interpolation. This can be done by approximating early time with
-        radiation approximation, and starting diffrax integration at the
-        early time with appropriate initial conditions.
+           Conformal time (units: Mpc)
         """
         return tools.fast_interp(
             lna, self.lna_tau_tab[0], self.lna_tau_tab[-1], self.tau_tab
         )
 
-    def nH(self, lna, params: "Params"):
+    def nH(
+        self,
+        lna: Float[Array, "*batch"] | float,
+        params: "Params",
+    ) -> Float[Array, "*batch"]:
         """
         Compute hydrogen number density.
 
-        Calculates total hydrogen number density at given redshift.
-
-        Parameters:
-        -----------
-        lna : float
-            Logarithm of scale factor
-        params : dict
-            Cosmological parameters
-
         Returns:
-        --------
-        float
-            Hydrogen number density (units: cm^{-3})
+           Hydrogen number density (units: cm^{-3})
         """
         return (
             (1 - params["YHe"])
@@ -404,47 +304,35 @@ class BackgroundPreRecomb(eqx.Module):
             / jnp.exp(lna) ** 3
         )
 
-    def TCMB(self, lna, params: "Params"):
+    def TCMB(
+        self,
+        lna: Float[Array, "*batch"] | float,
+        params: "Params",
+    ) -> Float[Array, "*batch"]:
         """
         Compute CMB temperature.
 
-        Calculates CMB temperature at given redshift using T ∝ 1/a scaling.
-
-        Parameters:
-        -----------
-        lna : float
-            Logarithm of scale factor
-        params : dict
-            Cosmological parameters
-
         Returns:
-        --------
-        float
-            CMB temperature (units: eV)
+           CMB temperature (units: eV)
         """
         return params["TCMB0"] / jnp.exp(lna)
 
-    def R_ratio_lna(self, lna, params: "Params"):
+    def R_ratio_lna(
+        self,
+        lna: Float[Array, "*batch"] | float,
+        params: "Params",
+    ) -> Float[Array, "*batch"]:
         """
-        Compute baryon drag ratio.
-
         Calculates R = 3ρ_b/(4ρ_γ), the ratio of baryon to photon
         energy densities that appears in baryon drag calculations.
-
-        Parameters:
-        -----------
-        lna : float
-            Logarithm of scale factor
-        params : dict
-            Cosmological parameters
 
         Returns:
         --------
         float
             Baryon drag ratio (units: dimensionless)
         """
-        rho_b = 0.0
-        rho_g = 0.0
+        rho_b = jnp.zeros(jnp.shape(lna))
+        rho_g = jnp.zeros(jnp.shape(lna))
 
         for s in self.species_list:
             if s.name == "Photon":
