@@ -11,6 +11,7 @@ import warnings
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 from jaxtyping import Array, Float
@@ -19,6 +20,56 @@ from . import species
 
 if TYPE_CHECKING:
     from ._schema_types import Options
+
+
+class _ProbeFluidParams(dict):
+    """Returns a scalar zero for every key, so the eval_shape probe can
+    trace rho/P without a real params dict (none exists at construction).
+
+    ``get`` is overridden because ``dict.get`` bypasses ``__missing__``.
+    Keep as a closure: a jax pytree boundary flattens it to a plain dict.
+    """
+
+    def __missing__(self, key):
+        return jnp.zeros(())
+
+    def get(self, key, default=None):
+        return self[key]
+
+
+def _check_scalar_contract(instance: species.Fluid) -> None:
+    """Construction-time probe: rho/P must be scalar-in, scalar-out.
+
+    Batching is an explicit vmap at call sites; an array-returning rho
+    breaks species stacks and ``[:, None]`` promotions far from the fluid
+    that caused it, so catch it at Model construction with the fluid's
+    name attached. Best-effort: a fluid whose rho cannot be abstractly
+    evaluated is warned about and skipped, never rejected.
+    """
+    probe_lna = jax.ShapeDtypeStruct((), jnp.float64)
+    probe_params = _ProbeFluidParams()
+    for method_name in ("rho", "P"):
+        fn = getattr(instance, method_name)
+        try:
+            out = jax.eval_shape(lambda lna: fn(lna, probe_params), probe_lna)
+        except Exception:
+            # Exotic params access (e.g. float(params[...])) defeats the
+            # abstract probe; don't reject a possibly-fine fluid, but don't
+            # pretend it was checked either.
+            warnings.warn(
+                f"{instance.name}.{method_name} could not be probed for the "
+                "scalar contract (rho/P: scalar-in, scalar-out); it will "
+                "only be checked by its first real use.",
+                stacklevel=2,
+            )
+            continue
+        if out.shape != ():
+            raise TypeError(
+                f"{instance.name}.{method_name} returned shape {out.shape} "
+                "for scalar lna: the species contract is scalar-in, "
+                "scalar-out -- batch with jax.vmap at the call site "
+                "(see docs/promoting_a_fluid.rst)."
+            )
 
 
 def populate_species(
@@ -73,6 +124,7 @@ def populate_species(
                 "(see docs/promoting_a_fluid.rst)."
             )
         instance = s(diffrax_vector_idx, options)
+        _check_scalar_contract(instance)
         if instance.name in species_dict:
             raise ValueError(
                 f"duplicate species name '{instance.name}': every fluid needs a "

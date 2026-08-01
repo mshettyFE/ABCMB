@@ -31,16 +31,7 @@ class DarkEnergy(BackgroundFluid):
         """
         Compute dark energy density.
 
-        Parameters:
-        -----------
-        lna : float
-            Logarithm of scale factor
-        args : mapping
-            Cosmological parameters (params)
-
         Returns:
-        --------
-        float
             Dark energy density (units: eV cm^{-3})
         """
         params = args
@@ -52,16 +43,7 @@ class DarkEnergy(BackgroundFluid):
         """
         Compute dark energy pressure.
 
-        Parameters:
-        -----------
-        lna : float
-            Logarithm of scale factor
-        args : mapping
-            Cosmological parameters (params)
-
         Returns:
-        --------
-        float
             Dark energy pressure (units: eV cm^{-3})
         """
         params = args

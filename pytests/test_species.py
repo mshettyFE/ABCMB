@@ -74,6 +74,9 @@ def test_role_impostor_raises_at_construction():
         def rho(self, lna, params):
             return params["omega_b"]
 
+        def P(self, lna, params):
+            return 0.0
+
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         options = schema.resolve_options({"use_LCDM_species": False})
@@ -90,6 +93,47 @@ def test_user_species_instance_raises():
     instance = species.MassiveNeutrino(0, _options())
     with pytest.raises(TypeError, match="classes, not instances"):
         model_setup.populate_species((instance,), _options())
+
+
+def test_scalar_contract_probe_rejects_array_rho(lcdm_model):
+    # Construction-time probe (jax.eval_shape, no numerics): a fluid whose
+    # rho returns an array for scalar lna would break species stacks and
+    # [:, None] promotions far from the culprit -- it must fail at Model
+    # construction with the fluid's name in the message.
+    import jax.numpy as jnp
+
+    from abcmb import model_setup, species
+
+    class ArrayRho(species.BackgroundFluid):
+        name = "ArrayRho"
+
+        def rho(self, lna, args):
+            return jnp.zeros(3)  # violates scalar-in, scalar-out
+
+        def P(self, lna, args):
+            return 0.0
+
+    with pytest.raises(TypeError, match=r"ArrayRho\.rho returned shape \(3,\)"):
+        model_setup.populate_species((ArrayRho,), _options())
+
+
+def test_scalar_contract_probe_skips_unprobeable(lcdm_model):
+    # Best-effort: a fluid the abstract probe cannot evaluate (concrete
+    # float() on a param) is warned about and admitted, never rejected.
+    from abcmb import model_setup, species
+
+    class Unprobeable(species.BackgroundFluid):
+        name = "Unprobeable"
+
+        def rho(self, lna, args):
+            return float(args["custom_thing"]) * 1.0  # defeats eval_shape
+
+        def P(self, lna, args):
+            return 0.0
+
+    with pytest.warns(UserWarning, match="Unprobeable.rho could not be probed"):
+        species_list, _ = model_setup.populate_species((Unprobeable,), _options())
+    assert any(s.name == "Unprobeable" for s in species_list)
 
 
 def test_abstract_name_is_matter_enforced():
