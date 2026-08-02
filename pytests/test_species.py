@@ -444,6 +444,101 @@ def test_adiabatic_ic_relations(lcdm_model):
     assert s["WrongIC"] > 0.1, "scaling validator missed a wrong k power"
 
 
+def test_dimensional_scaling(lcdm_model):
+    # Lambda-scaling (metamorphic homogeneity): scale the dimensionful
+    # params and demand the known power laws.
+    import jax.numpy as jnp
+
+    from abcmb import species
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        params = lcdm_model.add_derived_parameters(
+            {
+                "h": 0.6762,
+                "omega_cdm": 0.1193,
+                "omega_b": 0.0225,
+                "A_s": 2.12424e-9,
+                "n_s": 0.9709,
+                "Neff": 3.044,
+                "YHe": 0.245,
+                "tau_reion": 0.0544,
+            }
+        )
+
+    def scaled(pp, **kv):
+        q = dict(pp)
+        q.update({k: v * q[k] for k, v in kv.items()})
+        return q
+
+    lam, lna = 2.0, -3.0
+    sl, sd = lcdm_model.species_list, lcdm_model.species_dict
+    photon, ml, baryon = sl[sd["Photon"]], sl[sd["MasslessNeutrino"]], sl[sd["Baryon"]]
+
+    checks = {
+        "photon rho ~ TCMB0^4": photon.rho(lna, scaled(params, TCMB0=lam))
+        / photon.rho(lna, params)
+        / lam**4,
+        "massless rho ~ TCMB0^4": ml.rho(lna, scaled(params, TCMB0=lam))
+        / ml.rho(lna, params)
+        / lam**4,
+        "massless rho ~ N": ml.rho(lna, scaled(params, N_nu_massless=2.0))
+        / ml.rho(lna, params)
+        / 2.0,
+        "baryon rho ~ omega_b": baryon.rho(lna, scaled(params, omega_b=2.0))
+        / baryon.rho(lna, params)
+        / 2.0,
+    }
+    # Massive nu: (m, TCMB0) -> (lam m, lam TCMB0) leaves x = m/T invariant,
+    # so the quadrature integral is unchanged and rho, P scale as T^4.
+    mn = species.MassiveNeutrino(1, lcdm_model.options)
+    pm = dict(params)
+    pm["N_nu_massive"] = jnp.asarray(1.0)
+    pm_scaled = scaled(pm, m_nu_massive=lam, TCMB0=lam)
+    checks["massive rho ~ lam^4"] = mn.rho(lna, pm_scaled) / mn.rho(lna, pm) / lam**4
+    checks["massive P ~ lam^4"] = mn.P(lna, pm_scaled) / mn.P(lna, pm) / lam**4
+
+    for name, ratio in checks.items():
+        assert abs(float(ratio) - 1.0) < 1e-14, f"{name}: ratio {float(ratio):.6f}"
+
+
+def test_massive_nu_relativistic_limit(lcdm_model):
+    # Cross-module oracle: as m -> 0 a massive neutrino IS a massless one,
+    # so with matched count and temperature ratio the two rho
+    # implementations must agree.
+
+    import jax.numpy as jnp
+
+    from abcmb import species
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        params = lcdm_model.add_derived_parameters(
+            {
+                "h": 0.6762,
+                "omega_cdm": 0.1193,
+                "omega_b": 0.0225,
+                "A_s": 2.12424e-9,
+                "n_s": 0.9709,
+                "Neff": 3.044,
+                "YHe": 0.245,
+                "tau_reion": 0.0544,
+            }
+        )
+    p = dict(params)
+    p["N_nu_massive"] = jnp.asarray(1.0)
+    p["m_nu_massive"] = jnp.asarray(1e-7)
+    p["N_nu_massless"] = jnp.asarray(1.0)
+    p["T_nu_massless"] = params["T_nu_massive"]
+
+    mn = species.MassiveNeutrino(1, lcdm_model.options)
+    ml = lcdm_model.species_list[lcdm_model.species_dict["MasslessNeutrino"]]
+    ratio = float(mn.rho(-8.0, p) / ml.rho(-8.0, p))
+    assert abs(ratio - 1.0) < 2e-3, f"relativistic-limit rho ratio {ratio:.6f}"
+    w = float(mn.P(-8.0, p) / mn.rho(-8.0, p))
+    assert abs(w - 1.0 / 3.0) < 1e-9, f"relativistic-limit w {w:.2e}"
+
+
 def test_is_neutrino_flags():
     # Opt-in trait: False unless a species declares itself neutrino-like. The
     # two neutrino classes opt in; nothing else does.
