@@ -307,10 +307,7 @@ def test_massive_nu_quadrature_stencils():
 
     # Provenance pins: the vendored generator (arXiv:1201.3654 Appendix A
     # moment matching) must reproduce both carried stencils to their
-    # published digits (truncation radius ~2e-6, thresholds ~3x). The looser
-    # 5-point weight threshold covers ABCMB's last weight, which carries
-    # 0.12681 for CAMB's 0.126817 (a transcription that dropped the final
-    # digit; rel diff 5.5e-5).
+    # published digits (truncation radius ~2e-6, thresholds ~3x).
     from abcmb.species._camb_stencil_generation import (
         camb_five_point_rule,
         camb_three_point_rule,
@@ -321,7 +318,7 @@ def test_massive_nu_quadrature_stencils():
     assert all(abs(a / b - 1) < 5e-6 for a, b in zip(gen_w, _CAMB_W_PERT))
     gen_q, gen_w = camb_five_point_rule()
     assert all(abs(a / b - 1) < 5e-6 for a, b in zip(gen_q, _CAMB_Q_BG))
-    assert all(abs(a / b - 1) < 1e-4 for a, b in zip(gen_w, _CAMB_W_BG))
+    assert all(abs(a / b - 1) < 5e-6 for a, b in zip(gen_w, _CAMB_W_BG))
 
 
 def test_continuity_relation(lcdm_model):

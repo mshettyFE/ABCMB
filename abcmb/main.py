@@ -228,13 +228,13 @@ class Model(eqx.Module):
         pre_BG = self.get_BG_pre_recomb(params)
         recomb_inputs = pre_BG.make_recomb_inputs(self.RecModel, params)
 
+        # Committed (device_put) inputs pin jit's placement
+        # HyRex runs fastest on CPU (measured 29x vs an RTX 4070).
         cpu_dev = jax.devices("cpu")[0]
         recomb_inputs_cpu = jax.device_put(recomb_inputs, cpu_dev)
         params_cpu = jax.device_put(params, cpu_dev)
 
-        recomb_output = eqx.filter_jit(self.RecModel, backend="cpu")(
-            (recomb_inputs_cpu, params_cpu)
-        )
+        recomb_output = eqx.filter_jit(self.RecModel)((recomb_inputs_cpu, params_cpu))
 
         try:
             recomb_output = jax.device_put(recomb_output, jax.devices("gpu")[0])

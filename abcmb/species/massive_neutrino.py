@@ -27,12 +27,11 @@ from .base import Fluid, FluidParams, OutputArgs, PerturbationContext
 # and pinned by test: the 3-point rule is the unique moment match n = -4..2;
 # the 5-point rule is CAMB's original background rule (nodes 2, 4, 13 fixed
 # by choice, the rest moment-matched to n = -4..3; since replaced upstream
-# by a refit, kept here for continuity). ABCMB's last 5-point weight carries
-# 0.12681 for CAMB's 0.126817 (historical transcription, dropped digit).
+# by a refit, kept here for continuity).
 _CAMB_Q_PERT = (0.913201, 3.37517, 7.79184)
 _CAMB_W_PERT = (0.0687359, 3.31435, 2.29911)
 _CAMB_Q_BG = (0.583165, 2.0, 4.0, 7.26582, 13.0)
-_CAMB_W_BG = (0.0081201, 0.689407, 2.8063, 2.05156, 0.12681)
+_CAMB_W_BG = (0.0081201, 0.689407, 2.8063, 2.05156, 0.126817)
 
 
 class MassiveNeutrino(Fluid):

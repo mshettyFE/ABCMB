@@ -23,7 +23,8 @@ mn = jnp.float64(939565413.0)  # Neutron rest mass, in eV
 me = jnp.float64(510998.9461)  # Electron rest mass, in eV
 TCMB_today = jnp.float64(2.34865418e-4)  # CMB temperature today in eV.
 conv_factor = jnp.float64(3.2407792894443648e-18)  # (100 km/s/Mpc) in units of s^{-1}
-mH = mp + me + jnp.float64(13.5982860719383)  # Neutral hydrogen atom rest mass, in eV
+mH = mp + me - jnp.float64(13.5982860719383)  # Neutral hydrogen atom rest mass, in eV
+# (binding energy is subtracted: the bound state is lighter than its parts)
 mHe = jnp.float64(3.72839e9)  # Helium-4 rest mass, in eV
 mu_e = mp * me / mH  # Reduced mass of proton-electron system, in eV
 

@@ -3,12 +3,14 @@ post-hoc validation/updating of parameter struct
 """
 
 import warnings
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 import equinox as eqx
 import jax
 import jax.numpy as jnp
 from jax.scipy.interpolate import RegularGridInterpolator
+from jax.typing import ArrayLike
 
 from .. import constants as cnst
 
@@ -30,10 +32,10 @@ def _check_neutrino_input(params: "Params"):
         )
 
 
-def _require(ok, message):
-    """Raise ``ValueError(message)`` unless the (concrete, eager) condition holds."""
+def _require(ok: ArrayLike, message: str | Callable[[], str]) -> None:
+    """Raise ``ValueError`` unless the (concrete, eager) condition holds."""
     if not bool(ok):
-        raise ValueError(message)
+        raise ValueError(message() if callable(message) else message)
 
 
 def _bbn_type(options: "Options") -> str:
@@ -170,6 +172,8 @@ def _helium_from_linx(params: "Params", linx_thermo, linx_abundance):
     ``nuclear_rates_q``): sets ``Neff``, ``T_nu_massless``, and ``YHe`` in place.
     """
     params["Delta_Neff_init"] = jnp.array(params.get("Delta_Neff_init", 0.0))
+    # Committing the input to CPU pins the jit placement
+    dneff_cpu = jax.device_put(params["Delta_Neff_init"], jax.devices("cpu")[0])
     (
         t_vec_ref,
         a_vec_ref,
@@ -178,12 +182,12 @@ def _helium_from_linx(params: "Params", linx_thermo, linx_abundance):
         rho_NP_vec,
         P_NP_vec,
         Neff_vec,
-    ) = eqx.filter_jit(linx_thermo, backend="cpu")(params["Delta_Neff_init"])
+    ) = eqx.filter_jit(linx_thermo)(dneff_cpu)
 
     # convert user input omega_b to eta_fac LINX expects
     eta_fac = params["omega_b"] * linxconst.Omegabh2_to_eta0 / linxconst.eta0
 
-    abundances = eqx.filter_jit(linx_abundance, backend="cpu")(
+    abundances = eqx.filter_jit(linx_abundance)(
         rho_g_vec,
         rho_nu_vec,
         rho_NP_vec,
@@ -261,9 +265,11 @@ def _n_massless_from_neff(params: "Params", species):
     ) ** 4
     _require(
         params["N_nu_massless"] >= 0,
-        f"Neff={float(params['Neff']):.4g} is too small for the other relativistic "
-        "species: it implies a negative massless-neutrino count "
-        f"(N_nu_massless={float(params['N_nu_massless']):.4g}).",
+        lambda: (
+            f"Neff={float(params['Neff']):.4g} is too small for the other "
+            "relativistic species: it implies a negative massless-neutrino count "
+            f"(N_nu_massless={float(params['N_nu_massless']):.4g})."
+        ),
     )
 
 
@@ -318,9 +324,12 @@ def _derive_densities(params: "Params", species):
     params["omega_Lambda"] = params["h"] ** 2 - params["omega_r"] - params["omega_m"]
     _require(
         params["omega_Lambda"] >= 0,
-        f"omega_m + omega_r ({float(params['omega_m'] + params['omega_r']):.5g}) "
-        f"exceeds h^2 ({float(params['h'] ** 2):.5g}); omega_Lambda would be "
-        "negative -- check omega_cdm / omega_b / h.",
+        lambda: (
+            "omega_m + omega_r "
+            f"({float(params['omega_m'] + params['omega_r']):.5g}) "
+            f"exceeds h^2 ({float(params['h'] ** 2):.5g}); omega_Lambda would be "
+            "negative -- check omega_cdm / omega_b / h."
+        ),
     )
 
 
