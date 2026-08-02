@@ -45,6 +45,16 @@ derivation stage validates concrete values and cannot be traced:
 ``BG``, ``PT``, and ``params`` for dropping down to intermediate quantities.
 Field names are stable; new fields may be added.
 
+It also exposes the baryon-drag observables ``output.z_d`` and ``output.rs_d``
+-- the latter is the BAO standard ruler, which distance measurements are
+quoted against (``D_V/r_d``, ``D_M/r_d``, ``H r_d``), so it is what a CMB+BAO
+analysis needs:
+
+.. code-block:: python
+
+   out = model(params)
+   print(out.z_d, out.rs_d)     # ~1060, ~147 Mpc for Planck-like LCDM
+
 Supported: the fluid contract
 -----------------------------
 

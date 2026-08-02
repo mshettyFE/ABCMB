@@ -184,7 +184,7 @@ def test_neutrino_one_of_invariant():
 
     _check_neutrino_input({"Neff": 3.044})  # one alone is fine
     _check_neutrino_input({"N_nu_massless": 2.0})  # the other alone is fine
-    with pytest.raises(ValueError, match="only one of Neff"):
+    with pytest.raises(ValueError, match="only one of"):
         _check_neutrino_input({"Neff": 3.044, "N_nu_massless": 2.0})
 
 
@@ -318,3 +318,87 @@ def test_sbbn_table_out_of_range_warns():
     with pytest.warns(UserWarning, match="outside the sBBN table"):
         _helium_from_table(params, table)
     assert float(params["YHe"]) == pytest.approx(0.2 + 0.05, rel=1e-10)  # linear extrap
+
+
+def _base_params():
+    return {
+        "h": 0.6762,
+        "omega_cdm": 0.1193,
+        "omega_b": 0.0225,
+        "A_s": 2.12424e-9,
+        "n_s": 0.9709,
+        "YHe": 0.245,
+        "tau_reion": 0.0544,
+    }
+
+
+def test_neff_inferred_from_massless_count():
+    # Case 1 of the derivation: the user gives the true massless-neutrino
+    # count, so Neff is *inferred* from the early-time fluid content rather
+    # than supplied. Every other test passes Neff instead, so this branch
+    # (_neff_from_fluid_content) is otherwise never taken.
+    import warnings
+
+    from abcmb.main import Model
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        model = Model(l_max=100)
+        params = _base_params()
+        params["N_nu_massless"] = 3.0
+        full = model.add_derived_parameters(params)
+
+    # 3 massless neutrinos at the ABCMB temperature ratio is the standard
+    # non-instantaneous-decoupling value, not exactly 3.
+    assert 3.0 < float(full["Neff"]) < 3.1, f"Neff={float(full['Neff'])}"
+    assert float(full["omega_r"]) > 0.0
+    assert 0.0 < float(full["R_nu"]) < 1.0
+
+
+def test_neff_and_massless_count_are_mutually_exclusive():
+    # They are treated 1-to-1, so supplying both is ambiguous, not additive.
+    import warnings
+
+    from abcmb.main import Model
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        model = Model(l_max=100)
+        params = _base_params()
+        params["Neff"] = 3.044
+        params["N_nu_massless"] = 3.0
+        with pytest.raises(ValueError, match="only one of Neff"):
+            model.add_derived_parameters(params)
+
+
+def test_linx_rejects_hand_supplied_neutrino_inputs():
+    # LINX computes Neff/T_nu_massless from Delta_Neff_init; accepting a
+    # user value too would silently pick one and ignore the other.
+    import warnings
+
+    from abcmb.main import Model
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        model = Model(l_max=100, bbn_type="linx")
+        params = _base_params()
+        params["Neff"] = 3.044
+        with pytest.raises(ValueError, match="Delta_Neff_init"):
+            model.add_derived_parameters(params)
+
+
+def test_negative_lambda_budget_raises():
+    # omega_m + omega_r > h^2 leaves no room for dark energy; the guard names
+    # the offending sum rather than letting a negative density propagate.
+    import warnings
+
+    from abcmb.main import Model
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        model = Model(l_max=100)
+        params = _base_params()
+        params["omega_cdm"] = 1.5  # way past h^2 ~ 0.457
+        params["Neff"] = 3.044
+        with pytest.raises(ValueError, match="omega_Lambda"):
+            model.add_derived_parameters(params)

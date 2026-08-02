@@ -35,6 +35,9 @@ def test_run_toml_omits_none_git(tmp_path):
     # No null in TOML -> git_commit/git_dirty simply omitted, and reconstruct to None.
     assert "git_commit" not in data["environment"]
     assert provenance.Environment.from_flat(data["environment"]).git_commit is None
+    # A hand-edited run file with an unknown key must not be fatal.
+    tolerant = provenance.Environment.from_flat({**data["environment"], "future": 1})
+    assert tolerant.abcmb_version == "0.0.0"
 
 
 def test_run_toml_roundtrip_and_config_compatible(tmp_path):
@@ -118,3 +121,45 @@ def test_save_run_reads_declared_output_model_fields():
     }
     read_fields = {"raw_options", "species_list"}
     assert read_fields <= {f.name for f in dataclasses.fields(Model)}
+
+
+def test_to_py_converts_arrays_and_passes_through_others():
+    import jax.numpy as jnp
+    import numpy as np
+
+    # Scalars unwrap to Python numbers, arrays to lists -- TOML has neither
+    # numpy scalars nor ndarrays.
+    assert provenance._to_py(jnp.float64(2.5)) == 2.5
+    assert isinstance(provenance._to_py(jnp.float64(2.5)), float)
+    assert provenance._to_py(np.array([1.0, 2.0])) == [1.0, 2.0]
+    assert provenance._to_py("Table") == "Table"
+
+
+def test_check_drift_flags_dirty_tree_and_commit_change():
+    current = provenance.capture_environment()
+
+    # A run recorded from a dirty tree is not reproducible from git.
+    dirty = provenance.Environment(
+        abcmb_version=current.abcmb_version,
+        git_commit=current.git_commit,
+        git_dirty=True,
+    )
+    msgs = " ".join(provenance.check_drift(dirty))
+    assert "DIRTY" in msgs
+
+    # A different commit is drift even when everything else matches.
+    moved = provenance.Environment(
+        abcmb_version=current.abcmb_version,
+        git_commit="0" * 40,
+        git_dirty=False,
+    )
+    msgs = " ".join(provenance.check_drift(moved))
+    assert "0" * 40 in msgs or "commit" in msgs.lower()
+
+
+def test_check_drift_quiet_when_environment_matches():
+    # Self-comparison is the control: apart from the current tree's own dirty
+    # state, replaying the environment you are in reports nothing.
+    current = provenance.capture_environment()
+    msgs = [m for m in provenance.check_drift(current) if "DIRTY" not in m]
+    assert msgs == [], f"unexpected drift against self: {msgs}"
