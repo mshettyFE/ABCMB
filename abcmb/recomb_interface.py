@@ -35,3 +35,15 @@ class RecombInputs(eqx.Module):
 
     def H(self, lna: Float[Array, ""] | float) -> Float[Array, ""]:
         return fast_interp(lna, self.lna_grid[0], self.lna_grid[-1], self.H_arr)
+
+
+# The bundle HyRex hands back across the containment boundary (see
+# hyrex.get_history): plain fixed-size arrays on the static recombination
+# grid, consumed by Background. Unpacks as
+# ``xe, lna_grid, Tm, Tm_lna_start = recomb_output``.
+RecombOutput = tuple[
+    Float[Array, " n_rec"],  # xe on the grid (reionization not yet applied)
+    Float[Array, " n_rec"],  # the static recombination grid (lna)
+    Float[Array, " n_rec"],  # Tm on the same grid (eV)
+    Float[Array, ""],  # Tm validity start (scalar lna; earlier -> analytic Tm)
+]

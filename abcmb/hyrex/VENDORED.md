@@ -33,6 +33,12 @@ graph with the duplicate background removed.
   internal solves so the AD strategy is uniform.
 - **Internal `jit`s removed**: ABCMB jits the whole pipeline once; nested
   jits stripped.
+- **`z1` endpoint parameter removed** from `recomb_model.__init__`: the
+  grid structurally ends today (lna = 0). Upstream's "integrate down to
+  z1" freedom is incompatible with ABCMB's contract -- `Background`
+  resamples xe/Tm onto the static `lna_axis_full` grid and clamps beyond
+  its last point, so any earlier endpoint silently freezes late-time
+  ionization.
 - **`array_with_padding` is contained**: `get_history` sanitizes the inf
   padding and resamples every history onto the static `lna_axis_full` grid
   before returning, so the sentinel and its traced-int metadata never leave

@@ -190,4 +190,60 @@ def test_k_batch_strategies_agree():
         assert rel <= 5e-3, f"{name}: scan/vmap paths disagree ({rel:.2e})"
 
 
-# print(test_accuracy_checker())
+def test_end_to_end_differentiability():
+    # Forward-mode AD through the FULL pipeline -- eager derivation ->
+    # background -> recombination -> perturbations -> spectra -- in two
+    # parts:
+    #
+    # 1. Exact identity: unlensed Cl and Pk are exactly linear in A_s
+    #    (linear theory), so the jvp tangent must equal Cl/A_s.
+    # 2. Nontrivial path: d(sum ClTT)/dh runs through the eager derivation
+    #    stage (omega_Lambda, H0) into everything downstream, checked
+    #    against central finite differences. FD at production solver
+    #    tolerances is noise-limited , so the threshold is loose: measured 3.4e-3,
+    #    threshold ~6x. This catches broken/missing gradient paths (zeros,
+    #    NaNs, dropped dependencies), not coefficient-level errors.
+    import jax
+    import jax.numpy as jnp
+
+    base = {
+        "h": 0.6762,
+        "omega_cdm": 0.1193,
+        "omega_b": 0.0225,
+        "A_s": 2.12424e-9,
+        "n_s": 0.9709,
+        "Neff": 3.044,
+        "YHe": 0.245,
+        "tau_reion": 0.0544,
+    }
+    model = Model(l_max=100, k_max=0.1)
+
+    # 1. A_s linearity as an AD identity (jvp returns primals too -- one pass).
+    def f_As(A):
+        p = dict(base)
+        p["A_s"] = A
+        out = model(p)
+        return out.ClTT, out.Pk
+
+    (cl, pk), (dcl, dpk) = jax.jvp(
+        f_As, (jnp.asarray(base["A_s"]),), (jnp.asarray(1.0),)
+    )
+    r_cl = float(jnp.max(jnp.abs(dcl * base["A_s"] / cl - 1.0)))
+    r_pk = float(jnp.max(jnp.abs(dpk * base["A_s"] / pk - 1.0)))
+    print(f"A_s linearity identity: ClTT {r_cl:.2e}  Pk {r_pk:.2e}")
+    assert r_cl < 1e-13, f"tangent chain broken somewhere: ClTT identity {r_cl:.2e}"
+    assert r_pk < 1e-13, f"tangent chain broken somewhere: Pk identity {r_pk:.2e}"
+
+    # 2. d(sum ClTT)/dh vs central FD.
+    def f_h(h):
+        p = dict(base)
+        p["h"] = h
+        return jnp.sum(model(p).ClTT)
+
+    _, ad = jax.jvp(f_h, (jnp.asarray(base["h"]),), (jnp.asarray(1.0),))
+    eps = 1e-3 * base["h"]
+    fd = (float(f_h(base["h"] + eps)) - float(f_h(base["h"] - eps))) / (2 * eps)
+    rel = abs(float(ad) / fd - 1.0)
+    print(f"d(sum ClTT)/dh: AD {float(ad):+.4e}  FD {fd:+.4e}  rel {rel:.2e}")
+    assert jnp.isfinite(ad), "AD returned non-finite h-gradient"
+    assert rel < 2e-2, f"AD vs FD h-gradient disagreement {rel:.2e}"

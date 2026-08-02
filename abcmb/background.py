@@ -20,7 +20,7 @@ from jaxtyping import Array, Float
 from . import ABCMBTools as tools
 from . import constants as cnst
 from .hyrex import recomb_functions
-from .recomb_interface import RecombInputs
+from .recomb_interface import RecombInputs, RecombOutput
 from .species import Fluid
 
 if TYPE_CHECKING:
@@ -371,12 +371,7 @@ class Background(BackgroundPreRecomb):
     def __init__(
         self,
         pre_BG: BackgroundPreRecomb,
-        recomb_output: tuple[
-            Float[Array, " n_rec"],  # xe on the recombination grid
-            Float[Array, " n_rec"],  # the static recombination grid (lna)
-            Float[Array, " n_rec"],  # Tm on the same grid
-            Float[Array, ""],  # Tm validity start (scalar lna)
-        ],
+        recomb_output: RecombOutput,
         params: "Params",
         ReionModel: "type[ReionizationModel]",
         transfer_start_threshold: float = 0.008,

@@ -13,6 +13,42 @@ import pytest
 from abcmb.inputs.schema import resolve_options, resolve_params
 
 
+def test_staged_entry_points_require_derived_params(lcdm_model):
+    # Raw params used to fail deep in the conformal-time trace with a bare
+    # KeyError('omega_r') -- a key the user never supplied. The staged entry
+    # points now name the actual mistake up front. Presence-only by design:
+    # differentiating at fixed derived values is the documented AD idiom,
+    # so values are not policed.
+    import pytest
+
+    raw = {"h": 0.6762, "omega_cdm": 0.1193, "omega_b": 0.0225}
+    with pytest.raises(ValueError, match="missing derived keys"):
+        lcdm_model.run_derived(raw)
+    with pytest.raises(ValueError, match="missing derived keys"):
+        lcdm_model.get_BG_pre_recomb(raw)
+
+    # positive control: derived output passes the gate
+    import warnings
+
+    from abcmb.main import _check_derived
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        full = lcdm_model.add_derived_parameters(
+            {
+                "h": 0.6762,
+                "omega_cdm": 0.1193,
+                "omega_b": 0.0225,
+                "A_s": 2.12424e-9,
+                "n_s": 0.9709,
+                "Neff": 3.044,
+                "YHe": 0.245,
+                "tau_reion": 0.0544,
+            }
+        )
+    _check_derived(full)  # must not raise
+
+
 def test_resolve_options_defaults():
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")

@@ -30,15 +30,13 @@ class recomb_model(eqx.Module):
     integration_spacing : jnp.float64
     lna_axis_full : jnp.array
 
-    z1 : jnp.float64
-
     twog_redshift : jnp.float64
     He4equil_redshift : jnp.float64
     idx_4He_equil : jnp.array
 
     adjoint : "diffrax.adjoint" = eqx.field(static=True)
 
-    def __init__(self, integration_spacing = 5.0e-4, z0=8000., z1=0., adjoint = ForwardMode):
+    def __init__(self, integration_spacing = 5.0e-4, z0=8000., adjoint = ForwardMode):
         """
         Initialize complete recombination model.
 
@@ -51,18 +49,19 @@ class recomb_model(eqx.Module):
             Step size for integration (default: 5.0e-4)
         z0 : float, optional
             Initial redshift (default: 8000.)
-        z1 : float, optional
-            Final redshift (default: 0.)
         adjoint : diffrax.adjoint
             Adjoint mode for diffrax solves (static field).  Defaults
             to ForwardMode.
         """
         self.integration_spacing = integration_spacing
         self.adjoint = adjoint
-        self.z1 = z1
 
-        # Define time axes
-        self.lna_axis_full  = jnp.arange(-jnp.log(1+z0), -jnp.log(1+z1), self.integration_spacing)
+        # Define time axes. The grid always ends today (lna = 0): upstream
+        # HyRex took a final redshift z1 here, but ABCMB's Background
+        # resamples xe/Tm onto this static grid and clamps beyond its last
+        # point, so any earlier endpoint would silently freeze late-time
+        # ionization (ABCMB fork: parameter removed rather than documented).
+        self.lna_axis_full  = jnp.arange(-jnp.log(1+z0), -jnp.log(1.0), self.integration_spacing)
 
         self.twog_redshift = 701.
         self.He4equil_redshift = 3601. # generous
@@ -128,7 +127,7 @@ class recomb_model(eqx.Module):
         lna_axis_4Heequil  = self.lna_axis_full[self.idx_4He_equil]
 
         xe_4He, lna_4He = helium_model(lna_axis_4Heequil, adjoint=self.adjoint)(args)
-        xe_full, lna_full, Tm, lna_Tm = hydrogen_model(xe_4He,lna_4He,-jnp.log(1+self.z1),lna_4He.lastval,self.twog_redshift, adjoint=self.adjoint)(args)
+        xe_full, lna_full, Tm, lna_Tm = hydrogen_model(xe_4He,lna_4He,-jnp.log(1.0),lna_4He.lastval,self.twog_redshift, adjoint=self.adjoint)(args)
 
         # Containment boundary (ABCMB fork addition): sanitize the inf
         # padding and resample every history onto the static lna_axis_full

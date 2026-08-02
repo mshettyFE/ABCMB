@@ -28,11 +28,11 @@ Why am I seeing my code recompile?
 ----------------------------------
 There are a few reasons why otherwise JAX-safe code might not call the cached JIT-compiled version.  Passing in different data types to the same JIT-compiled argument will trigger recompilation (i.e. passing in "``1``" vs "``1.``").
 
-You may also be seeing recompilation because you wrapped ``Model.run_cosmology`` in a larger ``jit`` context.  We do not recommend enclosing ``Model.run_cosmology`` in another ``jax.jit``, for a couple reasons:
+You may also be seeing recompilation because you wrapped the model call (``model(params)``, or ``Model.run_derived``) in a larger ``jit`` context.  We do not recommend enclosing either in another ``jax.jit``, for a couple reasons:
 
-1. ``add_derived_parameters``, the first auxiliary function to be called under the hood, is intended to be called outside of ``jit``.   This in principle can be worked around by wrapping your inputs to your exterior-most ``jit`` context in ``jnp.array``.
+1. ``add_derived_parameters``, the eager derivation stage inside ``model(params)``, is intended to be called outside of ``jit`` (it performs concrete parameter checks and CPU-pinned BBN solves).
 
-2. LINX is CPU-optimized and has been carefully extracted from the rest of the ABCMB ``jit`` context so that it will always run on CPU, regardless of whether a GPU is present.  Wrapping ``Model.run_cosmology`` in a larger ``jit`` context will slow down your code substantially if you are running with BBN.  Future versions may also force CPU evaluation of HyRex in a similar fashion, so you will always be taking a performance hit if you choose to ``jit`` ``Model.run_cosmology``.
+2. LINX and HyRex are CPU-optimized (HyRex measured ~29x faster on CPU than an RTX 4070) and are deliberately kept outside the main ABCMB ``jit`` context, with their inputs committed to the CPU device.  Wrapping ``Model.run_derived`` in a larger ``jit`` context defeats that placement and will slow down your code substantially.
 
 Finally, you may be seeing recompilation because you've encountered a bug!  After you've ruled out the causes above, feel free to open an issue on our `GitHub <https://github.com/TonyZhou729/ABCMB>`_.   If you'd like to explore the cause yourself, turn on ``jax.config.update("explain_cache_misses"=True)`` before running your recompiling code.
 

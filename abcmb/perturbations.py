@@ -226,7 +226,9 @@ class PerturbationEvolver(eqx.Module):
         Assumes adiabatic initial conditions with vanishing isocurvature modes.
         """
         BG, params = args
-        ### CLASS Initial Conditions ###
+        # Metric eta adiabatic IC: the CRS series with beta_1 = 1/2, i.e.
+        # eta -> 1 superhorizon (the normalization that fixes every species'
+        # amplitude; the species' own series live in species/adiabatic_ics).
         tau_ini = BG.tau(lna_ini)
 
         om = params["om"]

@@ -7,7 +7,7 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 import numpy as np
-from jax import config, lax
+from jax import config
 from jaxtyping import Array
 
 from . import background, model_setup, perturbations, spectrum
@@ -23,10 +23,40 @@ from .species import Fluid
 if TYPE_CHECKING:
     # Compile-time only (generated type-checker artifact); annotations quote the names.
     from .inputs._schema_types import Options, Params
+    from .recomb_interface import RecombOutput
 
 file_dir = os.path.dirname(__file__)
 
 config.update("jax_enable_x64", True)
+
+# Unconditionally derived and unconditionally consumed by the background /
+# perturbation stages: their presence distinguishes the output of
+# add_derived_parameters from raw input params.
+_DERIVED_KEY_SENTINELS = (
+    "omega_r",
+    "omega_Lambda",
+    "omega_m",
+    "om",
+    "R_b",
+    "R_nu",
+    "H0",
+)
+
+
+def _check_derived(params) -> None:
+    """
+    Loud-early guard for the staged entry points: raw params fail deep in a
+    trace with a bare KeyError naming a key the user never supplied (e.g.
+    'omega_r'); this names the actual mistake instead. Key *presence* is
+    static dict structure, so the check is jit-safe and free at runtime --
+    values are deliberately not checked.
+    """
+    missing = [k for k in _DERIVED_KEY_SENTINELS if k not in params]
+    if missing:
+        raise ValueError(
+            f"params is missing derived keys {missing}: pass the output of "
+            "Model.add_derived_parameters(...), not raw input parameters."
+        )
 
 
 class Model(eqx.Module):
@@ -36,40 +66,6 @@ class Model(eqx.Module):
     Creates instances of fluid species based on user input and organizes
     them for computation. Manages the full pipeline from background
     evolution through CMB power spectrum computation.
-
-    Attributes:
-    -----------
-    PE : perturbations.PerturbationEvolver
-        ABCMB perturbations module
-    SS : spectrum.SpectrumSolver
-        ABCMB spectrum module
-    RecModel : hyrex.recomb_model
-        HyRex recombination module
-    options : dict
-        A dictionary of run options (expected to be static)
-    species_list : tuple
-        A list of all fluids in the user cosmology
-    species_dict : dict
-        Maps each fluid's name to its index in species_list
-        (the coupling registry).
-    PArthENoPE_CLASS_table  : Array
-        A 2D table for interpolation of the helium-4 mass fraction based
-        on the user's input baryon density and Neff
-    thermo_model_DNeff : linx.BackgroundModel
-        A LINX background model for BBN thermodynamics
-    abundanceModel : linx.AbundanceModel
-        A LINX abundance model used for computing the helium-4 mass fraction
-        given the user's input baryon density, Neff, neutron lifetime, and
-        nuclear reaction rates.
-    adjoint : type[diffrax.AbstractAdjoint]
-        Adjoint mode for diffrax solves.  Default is ForwardMode.
-
-    Methods:
-    --------
-    __call__ : Compute CMB angular power spectra
-    get_PTBG : Get perturbation table and background cosmology
-    get_BG : Get background cosmology
-    add_derived_parameters : Compute derived parameters
     """
 
     PE: perturbations.PerturbationEvolver
@@ -79,17 +75,25 @@ class Model(eqx.Module):
     raw_options: dict
 
     species_list: tuple[Fluid, ...]
-    species_dict: dict[str, int]
+    species_dict: dict[str, int]  # Maps each fluid's name to its index in species_list
 
-    PArthENoPE_CLASS_table: Array
-    thermo_model_DNeff: BackgroundModel | None
+    PArthENoPE_CLASS_table: (
+        Array  # A 2D table for interpolation of the helium-4 mass fraction based
+    )
+    # on the user's input baryon density and Neff
+
+    thermo_model_DNeff: (
+        BackgroundModel | None
+    )  # A LINX background model for BBN thermodynamics
+    # A LINX abundance model used for computing the helium-4 mass fraction
+    # given the user's input baryon density, Neff, neutron lifetime, and
+    # nuclear reaction rates.
     abundanceModel: AbundanceModel | None
+    # Solver used by diffrax
+    adjoint: type[diffrax.AbstractAdjoint] = eqx.field(
+        default=diffrax.ForwardMode, static=True
+    )
 
-    adjoint: type[diffrax.AbstractAdjoint] = eqx.field(static=True)
-
-    ### ADDING SPECIES: add has_ parameter and add condition to append to tuple.
-    # In the init, all species that are present within the model should be set to True.
-    # All couplings present between species should be set to true.
     def __init__(self, user_species: "Sequence[type[Fluid]] | None" = None, **kwargs):
         """
         Initialize Model instance.
@@ -97,18 +101,13 @@ class Model(eqx.Module):
         Sets up fluid species, recombination model, and spectrum solver
         based on configuration parameters.
 
-        Parameters:
-        -----------
-        user_species : tuple
-            A tuple of user-defined fluids to be included in the cosmology
         **kwargs : dict
             Configuration options passed as keyword arguments.
             Any unknown keys will be preserved for custom species extensibility.
         """
 
         # Pull adjoint out of kwargs before resolve_options — it must NOT end up
-        # inside self.options (a non-JAX pytree leaf breaks lax.cond / filter_jit
-        # tracing).
+        # inside self.options (a non-JAX pytree leaf breaks filter_jit tracing).
         adjoint = kwargs.pop("adjoint", diffrax.ForwardMode)
 
         # Keep the user's options exactly as supplied (keys as typed, defaults
@@ -154,7 +153,7 @@ class Model(eqx.Module):
         )
 
         # Initialize recombination model.
-        self.RecModel = hyrex.recomb_model(adjoint=adjoint)  # DO NOT CHANGE z1 FROM 0
+        self.RecModel = hyrex.recomb_model(adjoint=adjoint)
 
         # Initialize BBN model
         self.PArthENoPE_CLASS_table = jnp.asarray(
@@ -173,17 +172,25 @@ class Model(eqx.Module):
 
         self.adjoint = adjoint
 
-    # need this outside of the main jit context
-    # since we want LINX/HyRex to run on CPU
-    def __call__(self, params: dict = {}):
+    # Convenience front door: eager derivation + the traceable solve. Kept
+    # as __call__ because "params in, spectra out" is the overwhelmingly
+    # common case and the documented entry point; staged use goes through
+    # add_derived_parameters + run_derived.
+    def __call__(self, params: dict | None = None) -> "Output":
         """
-        Runs the full pipeline from background evolution through
-        perturbation integration to CMB power spectrum computation.
+        Run the full pipeline: derive parameters, then compute spectra.
+
+        Includes the *eager* derivation stage (concrete parameter checks and
+        the CPU-pinned BBN solves), so do not wrap this call in ``jax.jit``
+        or ``jax.vmap``. Eager autodiff is fine: ``jax.grad`` / ``jax.jacfwd``
+        trace through the derivation. For staged use, :meth:`run_derived` is the jit-internal stage, applied to the
+        output of :meth:`add_derived_parameters`.
 
         Parameters:
         -----------
-        params : dict
-            Cosmological parameters
+        params : dict, optional
+            Cosmological parameters; omitted keys resolve to the schema
+            defaults (no arguments runs the fiducial cosmology).
 
         Returns:
         --------
@@ -193,15 +200,19 @@ class Model(eqx.Module):
             the Background and PerturbationTable objects, and the
             full parameter dict including derived keys.
         """
-        full_params = self.add_derived_parameters(params)
-        return self.run_cosmology_abbr(full_params)
+        full_params = self.add_derived_parameters({} if params is None else params)
+        return self.run_derived(full_params)
 
-    def run_cosmology_abbr(self, params: "Params"):
+    def run_derived(self, params: "Params") -> "Output":
         """
-        Compute CMB angular power spectra for given parameters.
+        Compute CMB spectra from *already-derived* params (the output of
+        :meth:`add_derived_parameters`).
 
-        Runs the full pipeline from background evolution through
-        perturbation integration to CMB power spectrum computation.
+        This is the traceable stage of the pipeline and the natural
+        differentiation point: gradients with respect to (derived)
+        parameters flow through this method. Do not wrap it in a larger
+        ``jax.jit``: the recombination and BBN companions inside are
+        deliberately CPU-pinned outside the main jit context.
 
         Parameters:
         -----------
@@ -211,25 +222,18 @@ class Model(eqx.Module):
         Returns:
         --------
         Output
-            CMB power spectra and friends.
+            Bundle of CMB power spectra (ClTT, ClTE, ClEE) and their
+            multipole grid l, matter power spectrum Pk and its k-grid,
+            the Background and PerturbationTable objects, and the
+            full parameter dict including derived keys.
         """
-
-        # Cast int/bool params to float64 before entering any
-        # ``eqx.filter_jit`` for custom_vjp/AD safety in
-        # checkpointed_while_loop
-        def _to_float(v):
-            arr = jnp.asarray(v)
-            if arr.dtype.kind in "iub":
-                return arr.astype(jnp.float64)
-            return arr
-
-        params = jax.tree_util.tree_map(_to_float, params)
+        _check_derived(params)
 
         pre_BG = self.get_BG_pre_recomb(params)
         recomb_inputs = pre_BG.make_recomb_inputs(self.RecModel, params)
 
         # Committed (device_put) inputs pin jit's placement
-        # HyRex runs fastest on CPU (measured 29x vs an RTX 4070).
+        # HyRex runs fastest on CPU.
         cpu_dev = jax.devices("cpu")[0]
         recomb_inputs_cpu = jax.device_put(recomb_inputs, cpu_dev)
         params_cpu = jax.device_put(params, cpu_dev)
@@ -244,20 +248,12 @@ class Model(eqx.Module):
         return self._run_post_recomb(params, pre_BG, recomb_output)
 
     @eqx.filter_jit
-    def get_BG_pre_recomb(self, params: "Params"):
+    def get_BG_pre_recomb(self, params: "Params") -> "BackgroundPreRecomb":
         """
         Pre-recomb stage: tabulate conformal time (the HyRex input bundle is
         produced separately by ``pre_BG.make_recomb_inputs``).
-
-        Parameters:
-        -----------
-        params : dict
-            Cosmological parameters
-
-        Returns:
-        --------
-        BackgroundPreRecomb
         """
+        _check_derived(params)
         # let the user know the code is compiling
         print("")
         print("              /\\  ")
@@ -279,24 +275,14 @@ class Model(eqx.Module):
 
     @eqx.filter_jit
     def _run_post_recomb(
-        self, params: "Params", pre_BG: "BackgroundPreRecomb", recomb_output
-    ):
+        self,
+        params: "Params",
+        pre_BG: "BackgroundPreRecomb",
+        recomb_output: "RecombOutput",
+    ) -> "Output":
         """
         Post-recombination stage: full Background construction (reionization,
         optical depth, decoupling), perturbation evolution, CMB spectra.
-
-        Parameters:
-        -----------
-        params : dict
-            Cosmological parameters
-        pre_BG : BackgroundPreRecomb
-            Output of :meth:`get_BG_pre_recomb`.
-        recomb_output : tuple
-            HyRex output ``(xe, lna_xe, Tm, lna_Tm)``.
-
-        Returns:
-        --------
-        Output
         """
 
         # Compute background and linear perturbations
@@ -316,81 +302,48 @@ class Model(eqx.Module):
         return output
 
     @eqx.filter_jit
-    def get_PTBG(self, params: "Params", pre_BG: "BackgroundPreRecomb", recomb_output):
+    def get_PTBG(
+        self,
+        params: "Params",
+        pre_BG: "BackgroundPreRecomb",
+        recomb_output: "RecombOutput",
+    ):
         """
         Get perturbation table and full Background.
 
         Constructs the post-recomb Background from ``pre_BG`` + ``recomb_output``
         and runs the perturbation evolver.
 
-        Parameters:
-        -----------
-        params : dict
-            Cosmological parameters
-        pre_BG : BackgroundPreRecomb
-            Pre-recombination stage object.
-        recomb_output : tuple
-            HyRex output ``(xe, lna_xe, Tm, lna_Tm)``.
-
-        Returns:
-        --------
-        tuple
-            (PerturbationTable, Background)
         """
         BG = self.get_BG(params, pre_BG, recomb_output)
         PT = self.PE.full_evolution((BG, params))
         return PT, BG
 
-    def get_BG(self, params: "Params", pre_BG: "BackgroundPreRecomb", recomb_output):
+    def get_BG(
+        self,
+        params: "Params",
+        pre_BG: "BackgroundPreRecomb",
+        recomb_output: "RecombOutput",
+    ):
         """
         Construct the full ``Background`` from pre-recomb + HyRex output.
 
-        Selects the reionization model (z-input vs tau-input) via ``lax.cond``.
-        NOT directly ``@eqx.filter_jit``-decorated; called from inside
-        ``_run_post_recomb`` (which is jit-wrapped).
-
-        Parameters:
-        -----------
-        params : dict
-            Cosmological parameters
-        pre_BG : BackgroundPreRecomb
-            Pre-recombination stage object.
-        recomb_output : tuple
-            HyRex output ``(xe, lna_xe, Tm, lna_Tm)``.
-
-        Returns:
-        --------
-        background.Background
+        The reionization model (tau-input vs z-input) follows the static
+        ``input_tau_reion`` option, so the selection is plain Python at
+        trace time -- only the chosen branch is ever traced.
         """
-
-        def get_BG_z_reion(args):
-            params, pre_BG, recomb_output = args
-            return Background(
-                pre_BG,
-                recomb_output,
-                params,
-                ReionizationModelFromZ,
-                transfer_start_threshold=self.options["transfer_start_threshold"],
-            )
-
-        def get_BG_tau_reion(args):
-            params, pre_BG, recomb_output = args
-            return Background(
-                pre_BG,
-                recomb_output,
-                params,
-                ReionizationModelFromTau,
-                transfer_start_threshold=self.options["transfer_start_threshold"],
-            )
-
-        BG = lax.cond(
-            self.options["input_tau_reion"],
-            get_BG_tau_reion,
-            get_BG_z_reion,
-            (params, pre_BG, recomb_output),
+        reion_model = (
+            ReionizationModelFromTau
+            if self.options["input_tau_reion"]
+            else ReionizationModelFromZ
         )
-
-        return BG
+        return Background(
+            pre_BG,
+            recomb_output,
+            params,
+            reion_model,
+            transfer_start_threshold=self.options["transfer_start_threshold"],
+        )
 
     def add_derived_parameters(self, param_in: dict) -> "Params":
         # Resolve raw params against PARAM_SCHEMA (defaults, aliases, unknown-key
