@@ -324,6 +324,129 @@ def test_massive_nu_quadrature_stencils():
     assert all(abs(a / b - 1) < 1e-4 for a, b in zip(gen_w, _CAMB_W_BG))
 
 
+def test_continuity_relation(lcdm_model):
+    # Metamorphic cross-check: every background fluid must satisfy
+    # d(rho)/dlna = -3(rho+P) identically, tying its rho and P
+    # implementations together (for MassiveNeutrino, the two quadrature
+    # integrals).
+
+    import jax.numpy as jnp
+
+    from abcmb import species
+    from abcmb.species.validation import continuity_residuals
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        params = lcdm_model.add_derived_parameters(
+            {
+                "h": 0.6762,
+                "omega_cdm": 0.1193,
+                "omega_b": 0.0225,
+                "A_s": 2.12424e-9,
+                "n_s": 0.9709,
+                "Neff": 3.044,
+                "YHe": 0.245,
+                "tau_reion": 0.0544,
+            }
+        )
+
+    res = continuity_residuals(lcdm_model.species_list, params)
+    for name, r in res.items():
+        assert r < 1e-13, f"{name}: continuity residual {r:.2e}"
+
+    # MassiveNeutrino is not in the LCDM stack; check it standalone with a
+    # nonzero count (rho scales with N_nu_massive, so 0 would be vacuous).
+    mnu_params = dict(params)
+    mnu_params["N_nu_massive"] = jnp.asarray(1.0)
+    mn = species.MassiveNeutrino(1, lcdm_model.options)
+    r = continuity_residuals([mn], mnu_params)["MassiveNeutrino"]
+    assert r < 1e-13, f"MassiveNeutrino: continuity residual {r:.2e}"
+
+    # Negative control: a fluid whose P is inconsistent with its rho (matter
+    # dilution but radiation pressure) must be caught with an O(1) residual.
+    class BrokenFluid(species.BackgroundFluid):
+        name = "BrokenFluid"
+
+        def rho(self, lna, args):
+            return args["omega_cdm"] * jnp.exp(-3.0 * lna)
+
+        def P(self, lna, args):
+            return self.rho(lna, args) / 3.0  # wrong: implies a^-4 dilution
+
+    r = continuity_residuals([BrokenFluid(1, lcdm_model.options)], params)
+    assert r["BrokenFluid"] > 0.1, "validator failed to flag an inconsistent fluid"
+
+
+def test_adiabatic_ic_relations(lcdm_model):
+    # Metamorphic IC checks: (1) adiabaticity ties every species' delta to
+    # the photon's (3/4 for matter, 1 for radiation) and theta_b to theta_g,
+    # (2) the k-tau-om scaling degeneracy fixes
+    # the individual powers of k and tau that the combined k*tau forms hide;
+    # (3) the massive-nu Psi bins must encode the massless-nu (delta, theta,
+    # sigma) through dlnf0/dlnq. Since the adiabatic_ics extraction, (1) and
+    # (3) hold largely by construction for the built-ins (shared series);
+    # what they still pin: the composition factors (3/4, the Eq. 97 map,
+    # bin striding), and the validators remain the diagnostic for custom
+    # fluids. Measured residuals are 0.0; thresholds leave rounding room.
+    import jax.numpy as jnp
+    import numpy as np
+
+    from abcmb import species
+    from abcmb.species import adiabatic_ic_residuals, ic_scaling_residuals
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        params = lcdm_model.add_derived_parameters(
+            {
+                "h": 0.6762,
+                "omega_cdm": 0.1193,
+                "omega_b": 0.0225,
+                "A_s": 2.12424e-9,
+                "n_s": 0.9709,
+                "Neff": 3.044,
+                "YHe": 0.245,
+                "tau_reion": 0.0544,
+            }
+        )
+
+    for name, r in adiabatic_ic_residuals(lcdm_model.species_list, params).items():
+        assert r < 1e-13, f"{name}: adiabatic relation residual {r:.2e}"
+    for name, r in ic_scaling_residuals(lcdm_model.species_list, params).items():
+        assert r < 1e-13, f"{name}: k-tau scaling residual {r:.2e}"
+
+    # Massive-nu bins vs the massless-nu ICs they must encode.
+    mn = species.MassiveNeutrino(1, lcdm_model.options)
+    ml = lcdm_model.species_list[lcdm_model.species_dict["MasslessNeutrino"]]
+    k, tau = 0.05, 0.5
+    y_ml = np.asarray(ml.y_ini(k, tau, params))[:3]
+    y_mn = np.asarray(mn.y_ini(k, tau, params))
+    dlnf0 = np.asarray(mn._dlnf0_dlnq_pert())
+    for i in range(len(mn.q_pert)):
+        got = y_mn[i * mn.num_ells_per_bin : i * mn.num_ells_per_bin + 3]
+        expected = -np.array([y_ml[0] / 4.0, y_ml[1] / 3.0, y_ml[2] / 2.0]) * dlnf0[i]
+        r = float(np.max(np.abs(got / expected - 1.0)))
+        assert r < 1e-13, f"massive-nu bin {i}: {r:.2e}"
+
+    # Negative controls: a matter fluid with the radiation delta amplitude
+    # (missing 3/4) and a wrong k-power in theta must be flagged by both.
+    class WrongIC(species.StandardFluid):
+        name = "WrongIC"
+        num_equations = 2
+        is_matter = True
+
+        def y_ini(self, k, tau_ini, args):
+            delta = -((k * tau_ini) ** 2) / 3.0  # missing the 3/4
+            theta = -(k**3) * tau_ini**3 / 36.0  # k^3, not k^4
+            return jnp.array([delta, theta])
+
+    photon = lcdm_model.species_list[lcdm_model.species_dict["Photon"]]
+    wrong = WrongIC(1, lcdm_model.options)
+    a = adiabatic_ic_residuals([photon, wrong], params)
+    assert a["WrongIC.delta"] > 0.1, "adiabaticity validator missed a wrong ratio"
+    s = ic_scaling_residuals([wrong], params)
+    assert s["WrongIC"] > 0.1, "scaling validator missed a wrong k power"
+
+
 def test_is_neutrino_flags():
     # Opt-in trait: False unless a species declares itself neutrino-like. The
     # two neutrino classes opt in; nothing else does.

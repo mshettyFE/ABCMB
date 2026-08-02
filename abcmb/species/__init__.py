@@ -21,6 +21,11 @@ from .dark_energy import DarkEnergy
 from .massive_neutrino import MassiveNeutrino
 from .massless_neutrino import MasslessNeutrino
 from .photon import Photon
+from .validation import (
+    adiabatic_ic_residuals,
+    continuity_residuals,
+    ic_scaling_residuals,
+)
 
 __all__ = [
     "BackgroundFluid",
@@ -35,4 +40,7 @@ __all__ = [
     "Photon",
     "StandardFluid",
     "PerturbationContext",
+    "continuity_residuals",
+    "adiabatic_ic_residuals",
+    "ic_scaling_residuals",
 ]

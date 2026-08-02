@@ -10,6 +10,7 @@ from jax.typing import ArrayLike
 from jaxtyping import Array
 
 from .. import constants as cnst
+from . import adiabatic_ics
 from .base import FluidParams, OutputArgs, PerturbationContext, StandardFluid
 
 if TYPE_CHECKING:
@@ -97,21 +98,16 @@ class Baryon(StandardFluid):
 
     def y_ini(self, k: ArrayLike, tau_ini: ArrayLike, args: FluidParams) -> Array:
         r"""
-        The adiabatic initial conditions from CRS (arXiv:1012.0569) which include
-        the next-order om*tau corrections used by CLASS: delta from B4
-        (= 3/4 of the photon B1), theta from B2 at zeroth order in tight
-        coupling (the B5 slip is dropped), with \beta_1 = 1/2 fixed by the
-        eta_ini = 1 normalization.
+        Adiabatic initial conditions: delta_b = (3/4) delta_gamma (CRS B4)
+        and theta_b = theta_gamma (tight coupling at zeroth order; the B5
+        slip is dropped). Series and citations in :mod:`.adiabatic_ics`.
 
         Returns:
             Initial perturbation mode values (units: 1/Mpc for theta, else dimensionless)
         """
         params = args
-        delta_prefactor = (k * tau_ini) ** 2.0
-        delta = -delta_prefactor * (1.0 / 4.0 - params["om"] * tau_ini / 20.0)
-        theta_prefactor = k**4 * tau_ini**3
-        slope = (1.0 + 5.0 * params["R_b"] - params["R_nu"]) / (1.0 - params["R_nu"])
-        theta = -theta_prefactor * (1.0 / 36.0 - params["om"] * tau_ini * slope / 240.0)
+        delta = 0.75 * adiabatic_ics.delta_gamma(k, tau_ini, params)
+        theta = adiabatic_ics.theta_tight_coupled(k, tau_ini, params)
         return jnp.array([delta, theta])
 
     def y_prime(

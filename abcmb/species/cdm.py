@@ -9,6 +9,7 @@ from jax.typing import ArrayLike
 from jaxtyping import Array
 
 from .. import constants as cnst
+from . import adiabatic_ics
 from .base import FluidParams, OutputArgs, PerturbationContext, StandardFluid
 
 
@@ -52,20 +53,15 @@ class ColdDarkMatter(StandardFluid):
 
     def y_ini(self, k: ArrayLike, tau_ini: ArrayLike, args: FluidParams) -> Array:
         """
-        Compute initial conditions for cold dark matter perturbations.
-        The adiabatic initial condition is their Eq. (96): delta_c =
-        (3/4)*delta_g = -(C/2)*(k*tau)^2, where C = 1/2 is fixed by the
-        unit-curvature normalization eta_ini -> 2C = 1 (see
-        initial_conditions_one_k), plus the next-order (1 - om*tau/5)
-        correction used by CLASS (perturbations.c, adiabatic ICs;
-        om = a*rho_m/sqrt(rho_r); first-order series of Cyr-Racine &
-        Sigurdson, arXiv:1012.0569).
+        Adiabatic initial condition: delta_c = (3/4) delta_gamma (matter
+        counts particles, radiation counts T^4). Series and citations in
+        :mod:`.adiabatic_ics`.
 
         Returns:
             Initial density perturbation (units: dimensionless)
         """
         params = args
-        delta = -((k * tau_ini) ** 2) / 4.0 * (1.0 - params["om"] * tau_ini / 5.0)
+        delta = 0.75 * adiabatic_ics.delta_gamma(k, tau_ini, params)
         return jnp.array([delta])
 
     def y_prime(

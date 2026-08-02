@@ -122,6 +122,15 @@ At minimum:
   (``is_neutrino`` flags) and, if it has interesting construction logic, an
   instantiation test. The abstract-attribute and vector-layout contracts give
   you structural checking for free at first trace.
+* Run the :mod:`abcmb.species.validation` diagnostics on your fluid with
+  real params. :func:`~abcmb.species.continuity_residuals` checks
+  ``d(rho)/dlna = -3(rho+P)``, tying your ``rho`` and ``P`` to each other;
+  for a perturbed fluid with standard adiabatic ICs,
+  :func:`~abcmb.species.adiabatic_ic_residuals` checks your ``y_ini``
+  against the photon's (3/4 ratio for matter, 1 for radiation) and
+  :func:`~abcmb.species.ic_scaling_residuals` checks the powers of k and
+  tau individually. No reference values needed: correct implementations
+  sit at ~1e-14, mistakes at O(1).
 * If a reference computation exists (e.g. the same model in CLASS), extend the
   accuracy test — this is the only check that validates the *physics*.
 

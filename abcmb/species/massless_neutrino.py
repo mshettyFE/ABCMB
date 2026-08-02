@@ -7,6 +7,7 @@ from jax.typing import ArrayLike
 from jaxtyping import Array
 
 from .. import constants as cnst
+from . import adiabatic_ics
 from .base import FluidParams, OutputArgs, PerturbationContext, StandardFluid
 
 
@@ -59,53 +60,20 @@ class MasslessNeutrino(StandardFluid):
 
     def y_ini(self, k: ArrayLike, tau_ini: ArrayLike, args: FluidParams) -> Array:
         """
-        Compute initial conditions for massless neutrino perturbations.
-        Follows Ma & Bertschinger (1995), ApJ 455, 7 (arXiv:astro-ph/9506072).
-        The adiabatic initial conditions are their Eq. (96)
-        with C = 1/2, plus the next-order om*tau corrections used by CLASS
-        (perturbations.c, adiabatic ICs: theta_ur, shear_ur; first-order
-        series of Cyr-Racine & Sigurdson, arXiv:1012.0569).
+        Adiabatic initial conditions: the radiation delta (= delta_gamma)
+        plus the collisionless theta and sigma -- free streaming leaves the
+        shear unsuppressed, unlike the photon's. Series and citations in
+        :mod:`.adiabatic_ics`.
 
          Returns:
            Initial perturbation mode values (units: 1/Mpc for theta, else dimensionless)
         """
         params = args
-        R_nu = params["R_nu"]
+        delta = adiabatic_ics.delta_gamma(k, tau_ini, params)
+        theta = adiabatic_ics.theta_nu(k, tau_ini, params)
+        sigma = adiabatic_ics.sigma_nu(k, tau_ini, params)
 
-        delta = -((k * tau_ini) ** 2) / 3.0 * (1.0 - params["om"] * tau_ini / 5.0)
-        theta = (
-            -k
-            * (k * tau_ini) ** 3
-            / 36.0
-            / (4.0 * R_nu + 15.0)
-            * (
-                4.0 * R_nu
-                + 11.0
-                + 12.0
-                - 3.0
-                * (8.0 * R_nu**2 + 50.0 * R_nu + 275.0)
-                / 20.0
-                / (2.0 * R_nu + 15.0)
-                * tau_ini
-                * params["om"]
-            )
-        )
-        sigma = (
-            (k * tau_ini) ** 2
-            / (45.0 + 12.0 * R_nu)
-            * 2.0
-            * (
-                1.0
-                + (4.0 * R_nu - 5.0)
-                / 4.0
-                / (2.0 * R_nu + 15.0)
-                * tau_ini
-                * params["om"]
-            )
-        )
-
-        # Return the four non-zero ell modes, and all higher ell-modes are zero to start.
-        # For the neutrinos we track Fnu_2 = 2*sigma, for better structure within the hierarchy.
+        # Return the three non-zero ell modes; all higher ell-modes start at zero.
         return jnp.concatenate(
             (jnp.array([delta, theta, sigma]), jnp.zeros(self.num_equations - 3))
         )

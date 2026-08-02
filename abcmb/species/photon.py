@@ -10,6 +10,7 @@ from jax.typing import ArrayLike
 from jaxtyping import Array
 
 from .. import constants as cnst
+from . import adiabatic_ics
 from .base import FluidParams, OutputArgs, PerturbationContext, StandardFluid
 
 
@@ -60,32 +61,16 @@ class Photon(StandardFluid):
 
     def y_ini(self, k: ArrayLike, tau_ini: ArrayLike, args: FluidParams) -> Array:
         """
-        Compute initial conditions for photon perturbations.
-        Follows Ma & Bertschinger (1995), ApJ 455, 7 (arXiv:astro-ph/9506072).
-        The  adiabatic initial conditions are their Eq. (96) with C = 1/2, plus the
-        next-order om*tau corrections used by CLASS (perturbations.c,
-        adiabatic ICs: delta_g, theta_g; first-order series of
-        Cyr-Racine & Sigurdson, arXiv:1012.0569).
+        Adiabatic initial conditions (see :mod:`.adiabatic_ics` for the
+        series and citations). Shear and all higher F/G moments start at
+        zero: Thomson scattering isotropizes the photons (tight coupling).
 
         Returns:
             Initial perturbation mode values (units: 1/Mpc for theta, else dimensionless)
         """
         params = args
-        delta = -((k * tau_ini) ** 2) / 3.0 * (1.0 - params["om"] * tau_ini / 5.0)
-        theta = (
-            -(k**4)
-            * tau_ini**3
-            / 36.0
-            * (
-                1.0
-                - 3.0
-                * (1.0 + 5.0 * params["R_b"] - params["R_nu"])
-                / 20.0
-                / (1.0 - params["R_nu"])
-                * params["om"]
-                * tau_ini
-            )
-        )
+        delta = adiabatic_ics.delta_gamma(k, tau_ini, params)
+        theta = adiabatic_ics.theta_tight_coupled(k, tau_ini, params)
         return jnp.concatenate(
             (jnp.array([delta, theta]), jnp.zeros(self.num_equations - 2))
         )
