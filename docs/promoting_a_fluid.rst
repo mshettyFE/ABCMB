@@ -160,7 +160,7 @@ Pitfalls
   previously-tolerated out-of-bounds value will now warn.
 * **Name changes are breaking.** Coupling lookups (``args.find``), saved run
   files (the species drift check), and coupled fluids all key on ``name`` —
-  treat a promoted fluid's name as API.
+  treat a promoted fluid's name as API (see :doc:`public_api`).
 * **Options are read-only after resolution.** Never stash computed values into
   the ``options`` dict — return them explicitly instead — and annotate any new
   function taking options with ``options: "Options"`` so the type checker

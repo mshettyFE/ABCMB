@@ -1,5 +1,5 @@
 abcmb.inputs.schema module
-===================
+==========================
 
 .. automodule:: abcmb.inputs.schema
    :members:

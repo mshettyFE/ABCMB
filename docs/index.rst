@@ -25,6 +25,10 @@ The high-level organization of ABCMB is as follows:
 
 In most cases, the user will only need to initialize a :class:`~abcmb.main.Model` (``from abcmb import Model``) and call it on a parameter dictionary — ``output = model(params)``; the other modules are called by this top-level entry point. Runs can also be driven from a TOML config file, via :func:`~abcmb.inputs.config.model_from_config` or the ``abcmb`` command-line tool.
 
+Every module is importable, but only part of that surface is a stable
+interface. :doc:`public_api` says which — worth a look before you depend on an
+import path.
+
 Examples
 --------
 Three pedagogical example notebooks demonstrating how to use ABCMB are available at our `GitHub <https://github.com/TonyZhou729/ABCMB>`_.  These include Jupyter notebooks demonstrating
@@ -39,6 +43,7 @@ Three pedagogical example notebooks demonstrating how to use ABCMB are available
    :caption: Contents:
 
    modules
+   public_api
    promoting_a_fluid
    FAQ
 

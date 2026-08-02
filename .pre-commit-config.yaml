@@ -3,6 +3,11 @@
 #
 # Lint + format run on every `git commit`; the (slow) accuracy test runs on
 # `git push`. CI runs the same hooks server-side.
+#
+# Not wired as hooks, but available with the `test` extra:
+#   uv run pytest --cov --cov-report=term-missing   # coverage of abcmb/
+#   uv run pytest --nbmake example_notebooks        # run the example notebooks
+# Coverage config lives in [tool.coverage.*] in pyproject.toml.
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.15.20
