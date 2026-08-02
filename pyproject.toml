@@ -125,6 +125,8 @@ ignore = ["E741"]
 "abcmb/recomb_interface.py" = ["F722"]
 "abcmb/background.py" = ["F722"]
 "abcmb/reionization.py" = ["F722"]
+"abcmb/species/*.py" = ["F722"]
+"abcmb/inputs/derived.py" = ["F722"]
 
 [tool.pyright]
 # Type-check ABCMB's own code; vendored companion codes (LINX, HyRex) and

@@ -291,9 +291,8 @@ class PerturbationEvolver(eqx.Module):
 
         """
 
-        lna_start = self.get_starting_time(
-            k, args
-        )  # Start and end times from tight coupling settings
+        # Start and end times from tight coupling settings
+        lna_start = self.get_starting_time(k, args)
         lna_end = 0.0
 
         # For small k's the superhorizon time can be set relatively late, but we impose a cutoff of z~20000 for all modes
@@ -307,16 +306,12 @@ class PerturbationEvolver(eqx.Module):
         term = diffrax.ODETerm(self.get_derivatives)
         solver = diffrax.Kvaerno5()
 
+        large_k = k > self.options["k_split_PE"]
         rtol = jnp.where(
-            k > self.options["k_split_PE"],
-            self.options["rtol_large_k_PE"],
-            self.options["rtol_small_k_PE"],
+            large_k, self.options["rtol_large_k_PE"], self.options["rtol_small_k_PE"]
         )
-
         atol = jnp.where(
-            k > self.options["k_split_PE"],
-            self.options["atol_large_k_PE"],
-            self.options["atol_small_k_PE"],
+            large_k, self.options["atol_large_k_PE"], self.options["atol_small_k_PE"]
         )
 
         stepsize_controller = diffrax.PIDController(

@@ -8,7 +8,7 @@ import equinox as eqx
 import jax.numpy as jnp
 from jax import lax
 from jax.typing import ArrayLike
-from jaxtyping import Array
+from jaxtyping import Array, Float
 
 from .. import constants as cnst
 from . import adiabatic_ics
@@ -166,8 +166,11 @@ class Photon(StandardFluid):
         )
 
     def output_perturbations(
-        self, lna: ArrayLike, modes: Array, args: OutputArgs
-    ) -> dict[str, Array]:
+        self,
+        lna: Float[Array, " n_lna"],
+        modes: Float[Array, "n_y n_lna n_k"],
+        args: OutputArgs,
+    ) -> dict[str, Float[Array, "n_lna n_k"]]:
         """Output keys: ``delta``, ``theta``, ``sigma``, plus the polarization
         moments ``G0`` and ``G2``."""
         return {

@@ -6,7 +6,7 @@ import equinox as eqx
 import jax.numpy as jnp
 from jax import vmap
 from jax.typing import ArrayLike
-from jaxtyping import Array
+from jaxtyping import Array, Float
 
 from .. import constants as cnst
 from . import adiabatic_ics
@@ -369,8 +369,11 @@ class MassiveNeutrino(Fluid):
         )
 
     def output_perturbations(
-        self, lna: ArrayLike, modes: Array, args: OutputArgs
-    ) -> dict[str, Array]:
+        self,
+        lna: Float[Array, " n_lna"],
+        modes: Float[Array, "n_y n_lna n_k"],
+        args: OutputArgs,
+    ) -> dict[str, Float[Array, "n_lna n_k"]]:
         """Output keys: ``delta``, ``theta``, ``sigma`` -- momentum-integrated
         from the binned hierarchy, so directly comparable to the standard
         fluid outputs."""

@@ -6,7 +6,7 @@ Cold dark matter.
 
 import jax.numpy as jnp
 from jax.typing import ArrayLike
-from jaxtyping import Array
+from jaxtyping import Array, Float
 
 from .. import constants as cnst
 from . import adiabatic_ics
@@ -79,7 +79,10 @@ class ColdDarkMatter(StandardFluid):
         return jnp.array([-0.5 * metric_h_prime])
 
     def output_perturbations(
-        self, lna: ArrayLike, modes: Array, args: OutputArgs
-    ) -> dict[str, Array]:
+        self,
+        lna: Float[Array, " n_lna"],
+        modes: Float[Array, "n_y n_lna n_k"],
+        args: OutputArgs,
+    ) -> dict[str, Float[Array, "n_lna n_k"]]:
         """Output keys: ``delta``."""
         return {"delta": modes[self.first_idx]}

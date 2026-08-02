@@ -1,5 +1,5 @@
 import os
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING
 
 import diffrax
@@ -8,6 +8,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 from jax import config
+from jax.typing import ArrayLike
 from jaxtyping import Array
 
 from . import background, model_setup, perturbations, spectrum
@@ -23,6 +24,7 @@ from .species import Fluid
 if TYPE_CHECKING:
     # Compile-time only (generated type-checker artifact); annotations quote the names.
     from .inputs._schema_types import Options, Params
+    from .perturbations import PerturbationTable
     from .recomb_interface import RecombOutput
 
 file_dir = os.path.dirname(__file__)
@@ -43,7 +45,7 @@ _DERIVED_KEY_SENTINELS = (
 )
 
 
-def _check_derived(params) -> None:
+def _check_derived(params: Mapping[str, object]) -> None:
     """
     Loud-early guard for the staged entry points: raw params fail deep in a
     trace with a bare KeyError naming a key the user never supplied (e.g.
@@ -301,7 +303,7 @@ class Model(eqx.Module):
         params: "Params",
         pre_BG: "BackgroundPreRecomb",
         recomb_output: "RecombOutput",
-    ):
+    ) -> "tuple[PerturbationTable, Background]":
         """
         Get perturbation table and full Background.
 
@@ -318,7 +320,7 @@ class Model(eqx.Module):
         params: "Params",
         pre_BG: "BackgroundPreRecomb",
         recomb_output: "RecombOutput",
-    ):
+    ) -> Background:
         """
         Construct the full ``Background`` from pre-recomb + HyRex output.
 
@@ -339,7 +341,7 @@ class Model(eqx.Module):
             transfer_start_threshold=self.options["transfer_start_threshold"],
         )
 
-    def add_derived_parameters(self, param_in: dict) -> "Params":
+    def add_derived_parameters(self, param_in: Mapping[str, ArrayLike]) -> "Params":
         # Resolve raw params against PARAM_SCHEMA (defaults, aliases, unknown-key
         # handling), then run the imperative cosmology derivation.
         params = schema.resolve_params(param_in)

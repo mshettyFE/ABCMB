@@ -12,6 +12,7 @@ perturbations.c adiabatic ICs: theta_ur, shear_ur). The leading orders
 reproduce Ma & Bertschinger (1995), Eq. (96).
 """
 
+import jax.numpy as jnp
 from jax.typing import ArrayLike
 from jaxtyping import Array
 
@@ -20,7 +21,9 @@ from .base import FluidParams
 
 def delta_gamma(k: ArrayLike, tau_ini: ArrayLike, params: FluidParams) -> Array:
     """Photon (and any adiabatic radiation) density IC; matter scales by 3/4."""
-    return -((k * tau_ini) ** 2) / 3.0 * (1.0 - params["om"] * tau_ini / 5.0)
+    return jnp.asarray(
+        -((k * tau_ini) ** 2) / 3.0 * (1.0 - params["om"] * tau_ini / 5.0)
+    )
 
 
 def theta_tight_coupled(k: ArrayLike, tau_ini: ArrayLike, params: FluidParams) -> Array:
@@ -28,7 +31,7 @@ def theta_tight_coupled(k: ArrayLike, tau_ini: ArrayLike, params: FluidParams) -
     prefactor = -(k**4) * tau_ini**3 / 36.0
     slope = (1.0 + 5.0 * params["R_b"] - params["R_nu"]) / (1.0 - params["R_nu"])
     correction = 3.0 / 20.0 * slope * params["om"] * tau_ini
-    return prefactor * (1.0 - correction)
+    return jnp.asarray(prefactor * (1.0 - correction))
 
 
 def theta_nu(k: ArrayLike, tau_ini: ArrayLike, params: FluidParams) -> Array:
@@ -38,7 +41,7 @@ def theta_nu(k: ArrayLike, tau_ini: ArrayLike, params: FluidParams) -> Array:
     leading = 4.0 * R_nu + 11.0 + 12.0
     slope = 3.0 * (8.0 * R_nu**2 + 50.0 * R_nu + 275.0) / 20.0 / (2.0 * R_nu + 15.0)
     correction = slope * params["om"] * tau_ini
-    return prefactor * (leading - correction)
+    return jnp.asarray(prefactor * (leading - correction))
 
 
 def sigma_nu(k: ArrayLike, tau_ini: ArrayLike, params: FluidParams) -> Array:
@@ -49,4 +52,4 @@ def sigma_nu(k: ArrayLike, tau_ini: ArrayLike, params: FluidParams) -> Array:
     prefactor = 2.0 * (k * tau_ini) ** 2 / (45.0 + 12.0 * R_nu)
     slope = (4.0 * R_nu - 5.0) / 4.0 / (2.0 * R_nu + 15.0)
     correction = slope * params["om"] * tau_ini
-    return prefactor * (1.0 + correction)
+    return jnp.asarray(prefactor * (1.0 + correction))

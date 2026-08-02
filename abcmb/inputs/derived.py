@@ -11,16 +11,23 @@ import jax
 import jax.numpy as jnp
 from jax.scipy.interpolate import RegularGridInterpolator
 from jax.typing import ArrayLike
+from jaxtyping import Array, Float
 
 from .. import constants as cnst
 
 if TYPE_CHECKING:
+    from ..linx.abundances import AbundanceModel
+    from ..linx.background import BackgroundModel
+    from ..species import Fluid
     from ._schema_types import Options, Params
 from ..linx import const as linxconst
 from ..linx import thermo as linxThermo
 
+# The PArthENoPE/CLASS sBBN table: rows of (omega_b, Delta_Neff, YHe).
+_SBBNTable = Float[Array, "n_table 3"]
 
-def _check_neutrino_input(params: "Params"):
+
+def _check_neutrino_input(params: "Params") -> None:
     """
     Enforce the ``Neff`` / ``N_nu_massless`` one-of (they are treated 1-to-1; see
     paper). A param-only invariant — no Model needed — so ``derive_parameters``
@@ -52,7 +59,7 @@ def _bbn_type(options: "Options") -> str:
     return value
 
 
-def _resolve_neutrino_input(params: "Params", options: "Options"):
+def _resolve_neutrino_input(params: "Params", options: "Options") -> tuple[bool, bool]:
     """
     Check neutrino-input compatibility and apply the massless-neutrino fallback.
 
@@ -86,7 +93,7 @@ def _resolve_neutrino_input(params: "Params", options: "Options"):
     return input_N, input_Neff
 
 
-def _neff_from_fluid_content(params: "Params", species):
+def _neff_from_fluid_content(params: "Params", species: "tuple[Fluid, ...]") -> None:
     """
     Case 1: the user gave the true massless-neutrino count -> infer Neff from the
     early-time fluid content, correcting for the late-time massive-neutrino
@@ -124,7 +131,7 @@ def _neff_from_fluid_content(params: "Params", species):
     )  # Add difference to massless sector.
 
 
-def _helium_from_table(params: "Params", parthenope_table):
+def _helium_from_table(params: "Params", parthenope_table: _SBBNTable) -> None:
     """Interpolate ``YHe`` from the PArthENoPE/CLASS sBBN table (Neff must be set)."""
     bbn = parthenope_table
     omegab_all = bbn[:, 0]
@@ -166,7 +173,11 @@ def _helium_from_table(params: "Params", parthenope_table):
     )[0]
 
 
-def _helium_from_linx(params: "Params", linx_thermo, linx_abundance):
+def _helium_from_linx(
+    params: "Params",
+    linx_thermo: "BackgroundModel",
+    linx_abundance: "AbundanceModel",
+) -> None:
     """
     Run LINX BBN from ``Delta_Neff_init`` (+ optional ``tau_n_fac`` /
     ``nuclear_rates_q``): sets ``Neff``, ``T_nu_massless``, and ``YHe`` in place.
@@ -223,8 +234,12 @@ def _helium_from_linx(params: "Params", linx_thermo, linx_abundance):
 
 
 def _compute_helium_fraction(
-    params: "Params", options: "Options", parthenope_table, linx_thermo, linx_abundance
-):
+    params: "Params",
+    options: "Options",
+    parthenope_table: _SBBNTable,
+    linx_thermo: "BackgroundModel | None",
+    linx_abundance: "AbundanceModel | None",
+) -> bool:
     """
     Set ``params["YHe"]`` per the ``bbn_type`` backend (sBBN table, LINX, or leave
     the schema-resolved default for ""). Returns ``True`` when LINX has set
@@ -243,7 +258,7 @@ def _compute_helium_fraction(
     return False
 
 
-def _n_massless_from_neff(params: "Params", species):
+def _n_massless_from_neff(params: "Params", species: "tuple[Fluid, ...]") -> None:
     """
     Case 2: the user (or LINX) gave the total Neff -> subtract every
     non-massless-neutrino relativistic energy density and assign the remainder to
@@ -273,7 +288,7 @@ def _n_massless_from_neff(params: "Params", species):
     )
 
 
-def _derive_densities(params: "Params", species):
+def _derive_densities(params: "Params", species: "tuple[Fluid, ...]") -> None:
     """
     Derive the background densities from the fluid content: ``omega_m`` (+ ``R_b``),
     ``omega_r`` (+ ``R_nu``, at early times), the adiabatic-IC parameter ``om``, and
@@ -336,11 +351,11 @@ def _derive_densities(params: "Params", species):
 def derive_parameters(
     params: "Params",
     options: "Options",
-    species,
+    species: "tuple[Fluid, ...]",
     *,
-    parthenope_table,
-    linx_thermo,
-    linx_abundance,
+    parthenope_table: _SBBNTable,
+    linx_thermo: "BackgroundModel | None",
+    linx_abundance: "AbundanceModel | None",
 ) -> "Params":
     """
     Imperative cosmology derivation: orchestrate the derivation of every derived
