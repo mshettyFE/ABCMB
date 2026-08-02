@@ -43,6 +43,10 @@ dependencies = [
 [project.optional-dependencies]
 test = [
     "pytest",
+    "pytest-cov",
+    # Executes the example notebooks as tests: they are user-facing docs, and
+    # a stale cell teaches a broken pattern before any test catches it.
+    "nbmake",
     "classy",
 ]
 dev = [
@@ -94,6 +98,32 @@ abcmb = [
     "linx/data/nuclear_rates/other_PRIMAT_2023/*.txt",
     "linx/data/weak_thermal_corrections/*.txt",
     "sBBN_2025_CLASS.txt",
+]
+
+[tool.pytest.ini_options]
+# Default target: the test suite only. Notebooks are opt-in
+# (`pytest --nbmake example_notebooks`) because each one is a full solve.
+testpaths = ["pytests"]
+
+[tool.coverage.run]
+source = ["abcmb"]
+omit = [
+    # Vendored companion codes track their upstreams; ABCMB's own coverage
+    # should not be diluted (or flattered) by them.
+    "abcmb/linx/*",
+    "abcmb/hyrex/*",
+    # Generated from the schema, and a build-time tool rather than runtime code.
+    "abcmb/inputs/_schema_types.py",
+    "abcmb/inputs/_codegen.py",
+    # Offline provenance for the CAMB quadrature stencils; imported only by
+    # the pinning test that regenerates them.
+    "abcmb/species/_camb_stencil_generation.py",
+]
+
+[tool.coverage.report]
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
 ]
 
 [tool.ruff]

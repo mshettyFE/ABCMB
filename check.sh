@@ -3,9 +3,10 @@
 # Run the linter, formatter check, docs build, and tests in one step (mirrors CI).
 #
 #   ./check.sh          lint + format-check + docs + tests (check-only, like CI)
-#   ./check.sh fix      auto-apply ruff format + fixable lint, then test
+#   ./check.sh fix      auto-apply ruff format + fixable lint (no tests)
 #   ./check.sh test     run the tests only (skip lint/format/docs)
 #   ./check.sh docs     build the docs only (warnings are errors)
+#   ./check.sh nb       execute the example notebooks (nbmake)
 #
 set -euo pipefail
 
@@ -19,11 +20,22 @@ Usage: ./check.sh [command]
 
 Commands:
   (none)   lint + format-check + docs + tests (check-only, like CI)
-  fix      auto-apply ruff format + fixable lint, then run tests
+  fix      auto-apply ruff format + fixable lint + schema codegen, then exit
   test     run the tests only (skip lint/format/docs)
   docs     build the docs only (warnings are errors), then exit
+  nb       execute the example notebooks (nbmake), then exit
   help     show this help
+
+The test runs report coverage (pytest-cov, configured in [tool.coverage.*]).
+Notebooks are a separate command because each one is a full solve; they are
+also the only user-facing surface with no static checker behind them.
 EOF
+}
+
+run_notebooks() {
+    echo ">> nbmake (execute example notebooks)"
+    # The explicit path overrides testpaths (= pytests) from pyproject.toml.
+    uv run --extra test pytest --nbmake --nbmake-timeout=1800 example_notebooks
 }
 
 build_docs() {
@@ -45,13 +57,20 @@ case "${1:-}" in
         build_docs
         exit 0
         ;;
+    nb)
+        run_notebooks
+        exit 0
+        ;;
     fix)
+        # Auto-apply only, then stop: the point is a fast pre-commit tidy, so
+        # it does not fall through to the (slow) test run.
         echo ">> ruff format (applying)"
         $RUFF format .
         echo ">> ruff check --fix (applying)"
         $RUFF check --fix .
         echo ">> regenerate schema artifacts (defaults.toml, inputs/_schema_types.py)"
         uv run python -m abcmb.inputs._codegen
+        exit 0
         ;;
     "")
         echo ">> ruff check"
@@ -72,5 +91,5 @@ case "${1:-}" in
         ;;
 esac
 
-echo ">> pytest"
-uv run --extra test pytest -s -vv pytests
+echo ">> pytest (with coverage)"
+uv run --extra test pytest -s -vv --cov --cov-report=term-missing pytests

@@ -9,5 +9,6 @@
 *.egg-info/
 build/
 
+.coverage
 # Personal design notes / scratch (not version-controlled)
 scratch/

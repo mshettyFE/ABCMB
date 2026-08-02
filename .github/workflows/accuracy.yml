@@ -87,5 +87,36 @@ jobs:
       - name: Install dependencies
         run: uv sync --extra test --python ${{ matrix.python-version }}
 
+      # -p pytest_cov is required: PYTEST_DISABLE_PLUGIN_AUTOLOAD (above) keeps
+      # the run deterministic by not autoloading installed plugins, so coverage
+      # must be requested by name or it silently does nothing.
       - name: Run tests
-        run: uv run --python ${{ matrix.python-version }} pytest -s -vv pytests
+        run: >
+          uv run --python ${{ matrix.python-version }}
+          pytest -s -vv -p pytest_cov --cov --cov-report=term-missing pytests
+
+  # The example notebooks are user-facing documentation with no static checker
+  # behind them: ruff, pyright and the unit suite all pass on a notebook whose
+  # cells raise. Executing them is the only thing that catches a stale cell,
+  # so they run here -- on one Python version only, since each notebook is a
+  # full solve and this is a documentation check, not a physics one.
+  notebooks:
+    runs-on: ubuntu-latest
+    env:
+      JAX_PLATFORMS: "cpu"
+      JAX_ENABLE_X64: "true"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --extra test
+
+      # The explicit path overrides testpaths (= pytests) from pyproject.toml.
+      # --nbmake-timeout guards a hung kernel; nbmake has no default timeout.
+      - name: Execute example notebooks
+        run: uv run pytest --nbmake --nbmake-timeout=1800 example_notebooks

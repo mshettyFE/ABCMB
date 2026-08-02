@@ -229,10 +229,8 @@ class PerturbationEvolver(eqx.Module):
         Assembles the full system of Einstein-Boltzmann equations for
         metric and fluid perturbations in synchronous gauge.
 
-        y : array
-            Current perturbation state vector
         Returns:
-           Time derivatives of perturbation state
+            Time derivatives of perturbation state
         """
         k, BG, params = args
         a = jnp.exp(lna)
@@ -354,11 +352,8 @@ class PerturbationEvolver(eqx.Module):
 
         Extracts key perturbation modes and computes derived quantities.
 
-        modes
-            Perturbation evolution results
         Returns:
-           Organized perturbation data for interpolation
-
+            Organized perturbation data for interpolation
         """
         k = self.k_axis_perturbations
         BG, params = args
