@@ -58,45 +58,19 @@ class PerturbationEvolver(eqx.Module):
     Evolves perturbations for all fluid species using Einstein-Boltzmann
     equations in synchronous gauge.
 
-    Attributes:
-    -----------
-    species_list : tuple
-        A list of all fluids in the cosmology; coupled fluids are looked
-        up in it by name (``species.find_species``).
-    k_axis_perturbations : Array
-        A list of wavenumbers k at which to compute perturbations
-    options : dict
-        A dictionary containing run options
-    adjoint : type[diffrax.AbstractAdjoint]
-        Adjoint mode for diffrax solves.  Default is ForwardMode.
-
-    Methods:
-    --------
-    full_evolution : Evolve perturbations for multiple k modes
-    evolution_one_k : Evolve perturbations for single k mode
-    get_tca_on_off : Determine tight coupling approximation times
-    initial_conditions_one_k : Compute initial perturbation conditions
-    get_derivatives : Compute perturbation time derivatives
-    make_output_table : Create interpolatable perturbation table
     """
 
+    # A list of all fluids in the cosmology; coupled fluids are looked
+    # up in it by name (``species.find_species``).
     species_list: tuple[Fluid, ...]
-    k_axis_perturbations: Array
-    options: "Options"
-
-    adjoint: type[diffrax.AbstractAdjoint] = eqx.field(static=True)
-
-    def __init__(
-        self,
-        species_list,
-        k_axis_perturbations=jnp.geomspace(1.0e-4, 0.4, 600),
-        options={},
-        adjoint: type[diffrax.AbstractAdjoint] = diffrax.ForwardMode,
-    ):
-        self.species_list = species_list
-        self.k_axis_perturbations = k_axis_perturbations
-        self.options = options
-        self.adjoint = adjoint
+    # A list of wavenumbers k at which to compute perturbations
+    k_axis_perturbations: Array = eqx.field(
+        default_factory=lambda: jnp.geomspace(1.0e-4, 0.4, 600)
+    )
+    options: "Options" = eqx.field(default_factory=dict)
+    adjoint: type[diffrax.AbstractAdjoint] = eqx.field(
+        default=diffrax.ForwardMode, static=True
+    )
 
     def full_evolution(self, args):
         """

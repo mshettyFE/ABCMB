@@ -17,9 +17,6 @@ class DarkEnergy(BackgroundFluid):
 
     name = "DarkEnergy"
 
-    def __init__(self, first_idx, options):
-        super().__init__(first_idx, options)
-
     def rho(self, lna: ArrayLike, args: FluidParams) -> Array | float:
         """
         Compute dark energy density.

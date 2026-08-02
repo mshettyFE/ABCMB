@@ -88,10 +88,9 @@ class Model(eqx.Module):
     # given the user's input baryon density, Neff, neutron lifetime, and
     # nuclear reaction rates.
     abundanceModel: AbundanceModel | None
-    # Solver used by diffrax
-    adjoint: type[diffrax.AbstractAdjoint] = eqx.field(
-        default=diffrax.ForwardMode, static=True
-    )
+    # Solver used by diffrax. The default lives in __init__ (kwargs.pop);
+    # a field default here get get overrided by the explicit constructor.
+    adjoint: type[diffrax.AbstractAdjoint] = eqx.field(static=True)
 
     def __init__(self, user_species: "Sequence[type[Fluid]] | None" = None, **kwargs):
         """

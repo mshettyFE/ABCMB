@@ -26,9 +26,6 @@ class ColdDarkMatter(StandardFluid):
     num_equations = 1  # CDM only receives density perturbation in synchronous gauge.
     is_matter = True
 
-    def __init__(self, first_idx, options):
-        super().__init__(first_idx, options)
-
     def rho(self, lna: ArrayLike, args: FluidParams) -> Array | float:
         """
         Compute cold dark matter density.

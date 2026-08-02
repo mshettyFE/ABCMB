@@ -27,9 +27,6 @@ class Baryon(StandardFluid):
     num_equations = 2
     is_matter = True
 
-    def __init__(self, first_idx, options):
-        super().__init__(first_idx, options)
-
     def rho(self, lna: ArrayLike, args: FluidParams) -> Array | float:
         """
         Compute baryon density.
