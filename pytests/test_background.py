@@ -135,3 +135,41 @@ def test_tau0_omega_r_gradient_is_seed_only(bg_setup):
     assert abs((ad - analytic) / analytic) <= 1e-8, (
         f"d tau0/d omega_r: AD {ad:+.6e} vs analytic seed-path {analytic:+.6e}"
     )
+
+
+@pytest.fixture(scope="module")
+def full_background(bg_setup):
+    """A post-recombination Background (needs the HyRex solve)."""
+    model, full, _pre, _ = bg_setup
+    pre = model.get_BG_pre_recomb(full)
+    recomb_inputs = pre.make_recomb_inputs(model.RecModel, full)
+    recomb_out = eqx.filter_jit(model.RecModel)((recomb_inputs, full))
+    return model.get_BG(full, pre, recomb_out), full
+
+
+def test_drag_epoch_matches_known_cosmology(full_background):
+    # Reference values for base-LCDM, from Planck Collaboration, "Planck 2018
+    # results. VI. Cosmological parameters", A&A 641, A6 (2020)
+    # [arXiv:1807.06209], TT,TE,EE+lowE+lensing:
+    #     z_drag = 1059.94 +/- 0.30
+    #     r_drag = 147.09 +/- 0.26 Mpc
+    # The bands below are deliberately loose: this fixture's cosmology is
+    # Planck-*like*, not the Planck best fit, so this is a "did the drag epoch
+    # land in the right place" check, not a precision comparison.
+    BG, full = full_background
+    z_d = float(BG.z_d(full))
+    rs_d = float(BG.rs_d(full))
+    assert 1000.0 < z_d < 1120.0, f"drag redshift z_d = {z_d}"
+    assert 130.0 < rs_d < 160.0, f"sound horizon at drag rs_d = {rs_d} Mpc"
+
+
+def test_baryon_photon_ratio_scales_like_a(full_background):
+    # both densities are known powers of a, so R must be exactly
+    # linear in a.
+    BG, full = full_background
+    lna1, lna2 = -8.0, -10.0
+    r1 = float(BG.R_ratio_lna(lna1, full))
+    r2 = float(BG.R_ratio_lna(lna2, full))
+    assert r1 > 0.0
+    ratio = r2 / r1 / np.exp(lna2 - lna1)
+    assert abs(ratio - 1.0) < 1e-12, f"R/a not constant: {ratio}"

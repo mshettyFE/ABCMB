@@ -104,6 +104,9 @@ abcmb = [
 # Default target: the test suite only. Notebooks are opt-in
 # (`pytest --nbmake example_notebooks`) because each one is a full solve.
 testpaths = ["pytests"]
+markers = [
+    "slow: runs a full Boltzmann solve (deselect with -m 'not slow')",
+]
 
 [tool.coverage.run]
 source = ["abcmb"]
@@ -141,26 +144,23 @@ extend-exclude = [
 [tool.ruff.lint]
 # Ruff defaults (pyflakes F + pycodestyle E4/E7/E9) plus import sorting (I).
 extend-select = ["I"]
-# `l` is the standard multipole-moment symbol throughout this CMB code
-# (the Output.l attribute, etc.), so don't flag it as an ambiguous name.
-ignore = ["E741"]
+ignore = [
+    # `l` is the standard multipole-moment symbol throughout this CMB code
+    # (the Output.l attribute, etc.), so don't flag it as an ambiguous name.
+    "E741",
+    # jaxtyping shape strings (Float[Array, "n_lna n_k"]) are not forward type
+    # references, but ruff parses them as such; jaxtyping's FAQ says to disable
+    # F722 (pyright understands the annotations natively). Project-wide rather
+    # than per-file: shaped annotations are now the house style across the
+    # package, and a per-file list means adding one to a new file fails lint
+    # until someone remembers to update this table.
+    "F722",
+]
 
 [tool.ruff.lint.per-file-ignores]
 # Sphinx conf.py must manipulate sys.path before importing the package for
 # autodoc, so module-level imports legitimately follow other statements.
 "docs/conf.py" = ["E402"]
-# jaxtyping shape strings (Float[Array, "num_mu num_ell"]) are not forward
-# type references, but ruff parses them as such; jaxtyping's FAQ says to
-# disable F722 (pyright understands the annotations natively). Scoped to the
-# files using shaped annotations rather than turned off project-wide.
-"abcmb/ABCMBTools.py" = ["F722"]
-"abcmb/model_setup.py" = ["F722"]
-"abcmb/perturbations.py" = ["F722"]
-"abcmb/recomb_interface.py" = ["F722"]
-"abcmb/background.py" = ["F722"]
-"abcmb/reionization.py" = ["F722"]
-"abcmb/species/*.py" = ["F722"]
-"abcmb/inputs/derived.py" = ["F722"]
 
 [tool.pyright]
 # Type-check ABCMB's own code; vendored companion codes (LINX, HyRex) and

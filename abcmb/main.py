@@ -9,7 +9,7 @@ import jax.numpy as jnp
 import numpy as np
 from jax import config
 from jax.typing import ArrayLike
-from jaxtyping import Array
+from jaxtyping import Array, Float
 
 from . import background, model_setup, perturbations, spectrum
 from .background import Background, BackgroundPreRecomb
@@ -379,6 +379,12 @@ class Output(eqx.Module):
         Perturbation table including perturbations for all fluids
     params : dict
         Complete parameter dictionary including derived parameters
+
+    Properties:
+    -----------
+    z_d, rs_d
+        Baryon-drag redshift and the sound horizon there (the BAO standard
+        ruler). Computed on access, not stored -- see below.
     """
 
     # Power spectra
@@ -392,3 +398,29 @@ class Output(eqx.Module):
     BG: background.Background
     PT: perturbations.PerturbationTable
     params: "Params"
+
+    # Derived BAO observables. Properties rather than fields: each runs its own
+    # diffrax tabulation (~1.5 s for z_d, ~3 s for rs_d), which is real cost
+    # against a solve, and the CMB pipeline never needs them -- so runs that do
+    # not ask for BAO quantities pay nothing. Being properties also keeps them
+    # out of the pytree, so adding them changes no jit cache key.
+    @property
+    def z_d(self) -> Float[Array, ""]:
+        """
+        Baryon drag redshift: where the baryon-drag optical depth reaches 1.
+
+        Returns:
+            Drag redshift (units: dimensionless)
+        """
+        return self.BG.z_d(self.params)
+
+    @property
+    def rs_d(self) -> Float[Array, ""]:
+        """
+        Sound horizon at the baryon drag epoch -- the standard ruler BAO
+        distances are quoted against (``D_V/r_d``, ``D_M/r_d``, ``H r_d``).
+
+        Returns:
+            Sound horizon at drag (units: Mpc)
+        """
+        return self.BG.rs_d(self.params)
