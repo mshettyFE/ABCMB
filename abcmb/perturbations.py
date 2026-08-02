@@ -60,6 +60,27 @@ def _k_batch_strategy(value: str) -> KBatchStrategy:
         ) from None
 
 
+def _einstein_constraints(
+    k: ArrayLike,
+    a: ArrayLike,
+    aH: ArrayLike,
+    metric_eta: ArrayLike,
+    sum_rho_delta: ArrayLike,
+    sum_rho_plus_P_theta: ArrayLike,
+) -> tuple[Array, Array]:
+    """
+    The synchronous-gauge Einstein constraints closing the fluid system:
+    ``h'`` from the energy constraint and ``eta'`` from the momentum
+    constraint, given the summed fluid sources.
+    """
+    grav = 4.0 * jnp.pi * cnst.G * a**2
+    metric_h_prime = (
+        2.0 / aH**2 * (k**2 * metric_eta + grav / cnst.c_Mpc_over_s**2 * sum_rho_delta)
+    )
+    metric_eta_prime = grav / aH / k**2 * sum_rho_plus_P_theta / cnst.c_Mpc_over_s**2
+    return metric_h_prime, metric_eta_prime
+
+
 class PerturbationEvolver(eqx.Module):
     """
     Linear scalar perturbation evolution solver.
@@ -72,10 +93,11 @@ class PerturbationEvolver(eqx.Module):
     # A list of all fluids in the cosmology; coupled fluids are looked
     # up in it by name (``species.find_species``).
     species_list: tuple[Fluid, ...]
-    # A list of wavenumbers k at which to compute perturbations
-    k_axis_perturbations: Float[Array, " n_k"] = eqx.field(
-        default_factory=lambda: jnp.geomspace(1.0e-4, 0.4, 600)
-    )
+    # The wavenumbers k at which to compute perturbations. Required, no
+    # default: build with model_setup.get_k_axis_perturbations, whose hybrid
+    # grid samples the acoustic oscillations linearly -- a plausible-looking
+    # log grid would quietly undersample them at high k.
+    k_axis_perturbations: Float[Array, " n_k"]
     options: "Options" = eqx.field(default_factory=dict)
     adjoint: type[diffrax.AbstractAdjoint] = eqx.field(
         default=diffrax.ForwardMode, static=True
@@ -114,10 +136,8 @@ class PerturbationEvolver(eqx.Module):
                 scan_fun, None, self.k_axis_perturbations
             )  # res has shape (Nk, Nlna, Ny)
 
-        res = res.transpose(
-            2, 1, 0
-        )  # Transpose so the shape is (Ny, Nlna, Nk), easier for vmapping over in PT
-
+        # Transpose so the shape is (Ny, Nlna, Nk), easier for vmapping over in PT
+        res = res.transpose(2, 1, 0)
         PT = self.make_output_table(lna, res, args)
         return PT
 
@@ -135,10 +155,11 @@ class PerturbationEvolver(eqx.Module):
         # a) τc/τh  →  f1(lna) = BG.tau_c * BG.aH
         f1 = vmap(lambda l: BG.tau_c(l, params) * BG.aH(l, params))(lna_start_range)
         # invert f1(lna) = thr1  →  lna = interp(thr1, f1, lna_range)
-        lna1 = jnp.interp(
-            self.options["R_tc"], f1, lna_start_range
-        )  # jnp.interp ends up being
-        # faster than fast_interp through here
+        # jnp.interp, not ABCMBTools.fast_interp: the inversion abscissae
+        # (f1, f2) are non-uniform over ~4 decades, so fast_interp's
+        # uniform-grid indexing would misplace crossings by several e-folds
+        # in lna
+        lna1 = jnp.interp(self.options["R_tc"], f1, lna_start_range)
         # b) τh/τk  →  f2(lna) = k / BG.aH
         f2 = k / vmap(lambda l: BG.aH(l, params))(lna_start_range)
         # invert f2(lna) = thr2
@@ -172,18 +193,13 @@ class PerturbationEvolver(eqx.Module):
         tau_ini = BG.tau(lna_ini)
 
         om = params["om"]
+        R_nu = params["R_nu"]
 
-        metric_eta_ini = 1.0 - k**2 * tau_ini**2 / 12.0 / (
-            15.0 + 4.0 * params["R_nu"]
-        ) * (
-            5.0
-            + 4.0 * params["R_nu"]
-            - (16.0 * params["R_nu"] * params["R_nu"] + 280.0 * params["R_nu"] + 325)
-            / 10.0
-            / (2.0 * params["R_nu"] + 15.0)
-            * tau_ini
-            * om
-        )
+        prefactor = k**2 * tau_ini**2 / 12.0 / (15.0 + 4.0 * R_nu)
+        leading = 5.0 + 4.0 * R_nu
+        slope = (16.0 * R_nu * R_nu + 280.0 * R_nu + 325.0) / 10.0 / (2.0 * R_nu + 15.0)
+        correction = slope * tau_ini * om
+        metric_eta_ini = 1.0 - prefactor * (leading - correction)
 
         # Static  layout check: a species whose y_ini size
         # disagrees with its declared num_equations would silently shift every
@@ -238,23 +254,8 @@ class PerturbationEvolver(eqx.Module):
             # If species has velocity perturbation, add to total.
             sum_rho_plus_P_theta += species.rho_plus_P_theta(lna, y, ctx)
 
-        metric_h_prime = (
-            2.0
-            / aH**2
-            * (
-                k**2 * metric_eta
-                + 4.0 * jnp.pi * cnst.G * a**2 / cnst.c_Mpc_over_s**2 * sum_rho_delta
-            )
-        )
-        metric_eta_prime = (
-            4.0
-            * jnp.pi
-            * cnst.G
-            * a**2
-            / aH
-            / k**2
-            * sum_rho_plus_P_theta
-            / cnst.c_Mpc_over_s**2
+        metric_h_prime, metric_eta_prime = _einstein_constraints(
+            k, a, aH, metric_eta, sum_rho_delta, sum_rho_plus_P_theta
         )
 
         # Now loop over all species and assemble their respective y_primes
@@ -426,37 +427,18 @@ class PerturbationEvolver(eqx.Module):
 
         delta_m = sum_rho_delta_m / sum_rho_m[:, None]
 
-        metric_h_prime = (
-            2.0
-            / aH**2
-            * (
-                karr**2 * metric_eta
-                + 4.0 * jnp.pi * cnst.G * a**2 / cnst.c_Mpc_over_s**2 * sum_rho_delta
-            )
-        )
-        metric_eta_prime = (
-            4.0
-            * jnp.pi
-            * cnst.G
-            * a**2
-            / aH
-            * sum_rho_plus_P_theta
-            / cnst.c_Mpc_over_s**2
-            / karr**2
+        # Same Einstein constraints as the ODE field, batched on the
+        # output (lna, k) grid.
+        metric_h_prime, metric_eta_prime = _einstein_constraints(
+            karr, a, aH, metric_eta, sum_rho_delta, sum_rho_plus_P_theta
         )
         metric_alpha = aH * (metric_h_prime + 6.0 * metric_eta_prime) / 2.0 / karr**2
-        metric_alpha_prime = (
-            metric_eta / aH
-            - 2.0 * metric_alpha
-            - 12.0
-            * jnp.pi
-            * cnst.G
-            * a**2
-            / aH
-            * sum_rho_plus_P_sigma
-            / cnst.c_Mpc_over_s**2
-            / karr**2
+        # alpha' from the anisotropic-stress (shear) Einstein equation.
+        grav_shear = 12.0 * jnp.pi * cnst.G * a**2
+        shear_term = (
+            grav_shear / aH * sum_rho_plus_P_sigma / cnst.c_Mpc_over_s**2 / karr**2
         )
+        metric_alpha_prime = metric_eta / aH - 2.0 * metric_alpha - shear_term
 
         return PerturbationTable(
             k,
