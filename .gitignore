@@ -7,6 +7,7 @@
 **/Module_Tests/
 **/comparison_scripts/
 *.egg-info/
+build/
 
 # Personal design notes / scratch (not version-controlled)
 scratch/

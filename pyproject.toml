@@ -80,6 +80,10 @@ include = ["abcmb", "abcmb.*"]
 
 [tool.setuptools.package-data]
 abcmb = [
+    # PEP 561 marker: without it, installed-package consumers get Unknown for
+    # every ABCMB symbol and the inline annotations are ignored by their
+    # type checker.
+    "py.typed",
     "bessel_tab/*.txt",
     "hyrex/tabs/*.dat",
     "linx/data/*",
