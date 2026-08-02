@@ -1,6 +1,7 @@
 """
 Photons (temperature + polarization hierarchies). Coupled to the Baryon
-fluid at runtime via species_dict (a name lookup, deliberately not an import).
+fluid at runtime via a name lookup (``args.find``), deliberately not an
+import.
 """
 
 import equinox as eqx
@@ -95,10 +96,8 @@ class Photon(StandardFluid):
             Time derivatives of perturbation modes (units: 1/Mpc for theta, else dimensionless)
         """
         BG, params = args.BG, args.params
-        # Get Baryon from list
-        baryon = args.species_list[args.species_dict["Baryon"]]
-        # Same structural requirement in the other direction.
-        assert isinstance(baryon, StandardFluid)
+        # Coupled partner: same structural requirement in the other direction.
+        baryon = args.find("Baryon", StandardFluid)
 
         aH = BG.aH(lna, params)
         tau_c = BG.tau_c(lna, params)

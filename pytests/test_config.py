@@ -125,7 +125,7 @@ def test_replay_species_drift(tmp_path, lcdm_model):
     )
     model, params = model_from_config(str(cfg))
     assert params == {"omega_cdm": 0.12}
-    assert list(model.species_dict) == lcdm
+    assert [s.name for s in model.species_list] == lcdm
 
 
 def test_public_config_api(tmp_path):

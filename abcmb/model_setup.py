@@ -74,7 +74,7 @@ def _check_scalar_contract(instance: species.Fluid) -> None:
 
 def populate_species(
     user_species: "Sequence[type[species.Fluid]] | None", options: "Options"
-) -> "tuple[tuple[species.Fluid, ...], dict[str, int]]":
+) -> "tuple[species.Fluid, ...]":
     """
     Instantiate the model's fluid stack: the baseline LCDM species (when
     ``options["use_LCDM_species"]``) followed by ``user_species``, in order.
@@ -83,14 +83,13 @@ def populate_species(
     fluid itself so it can assign ``first_idx`` (the fluid's offset into the
     diffrax state vector) cumulatively from the fluids registered before it.
 
-    Returns ``(species_list, species_dict)``, where ``species_dict`` maps
-    each fluid's unique ``name`` to its index in ``species_list``. Raises at
-    construction on non-Fluid entries, duplicate names, and missing or
-    impostor ``Baryon``/``Photon`` roles (the baryon-photon coupling requires
-    genuine subclasses; see docs/promoting_a_fluid.rst).
+    Returns the species tuple; coupled fluids are looked up in it by name
+    (``species.find_species``). Raises at construction on non-Fluid entries,
+    duplicate names, and missing or impostor ``Baryon``/``Photon`` roles (the
+    baryon-photon coupling requires genuine subclasses; see
+    docs/promoting_a_fluid.rst).
     """
     species_list = ()
-    species_dict = {}
 
     lcdm_species = (
         species.DarkEnergy,
@@ -108,7 +107,7 @@ def populate_species(
     # Slot 0 of the diffrax state vector is the metric perturbation eta;
     # fluid equations start at 1.
     diffrax_vector_idx = 1
-    for i, s in enumerate(selected):
+    for s in selected:
         # Classes, not instances: ABCMB instantiates each fluid itself so it
         # can assign first_idx consistently with the other fluids present.
         if not isinstance(s, type):
@@ -125,29 +124,29 @@ def populate_species(
             )
         instance = s(diffrax_vector_idx, options)
         _check_scalar_contract(instance)
-        if instance.name in species_dict:
+        if any(existing.name == instance.name for existing in species_list):
             raise ValueError(
                 f"duplicate species name '{instance.name}': every fluid needs a "
-                "unique name -- coupling lookups (species_dict) and the "
-                "perturbation output tables are keyed by it."
+                "unique name -- coupling lookups and the perturbation output "
+                "tables are keyed by it."
             )
         species_list = species_list + (instance,)
-        species_dict[instance.name] = i
         diffrax_vector_idx += instance.num_equations
 
     # Required roles: the baryon-photon coupling (perturbations, background
     # thermodynamics, recombination) references these two fluids by name
+    names = [instance.name for instance in species_list]
     for required, role_cls in (
         ("Baryon", species.Baryon),
         ("Photon", species.Photon),
     ):
-        if required not in species_dict:
+        if required not in names:
             raise ValueError(
                 f"no fluid named '{required}': the baryon-photon coupling and "
                 "recombination require fluids named 'Baryon' and 'Photon' "
                 "(use use_LCDM_species=True, or include them in user_species)."
             )
-        found = species_list[species_dict[required]]
+        found = species_list[names.index(required)]
         if not isinstance(found, role_cls):
             raise TypeError(
                 f"the fluid named '{required}' is a {type(found).__name__}, "
@@ -157,7 +156,7 @@ def populate_species(
                 "(see docs/promoting_a_fluid.rst)."
             )
 
-    return species_list, species_dict
+    return species_list
 
 
 def _check_k_step(

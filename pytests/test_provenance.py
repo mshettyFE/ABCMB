@@ -116,5 +116,5 @@ def test_save_run_reads_declared_output_model_fields():
     assert {"l", "ClTT", "ClTE", "ClEE", "k", "Pk"} <= {
         f.name for f in dataclasses.fields(Output)
     }
-    read_fields = {"raw_options", "species_list", "species_dict"}
+    read_fields = {"raw_options", "species_list"}
     assert read_fields <= {f.name for f in dataclasses.fields(Model)}

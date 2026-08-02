@@ -75,7 +75,6 @@ class Model(eqx.Module):
     raw_options: dict
 
     species_list: tuple[Fluid, ...]
-    species_dict: dict[str, int]  # Maps each fluid's name to its index in species_list
 
     PArthENoPE_CLASS_table: (
         Array  # A 2D table for interpolation of the helium-4 mass fraction based
@@ -119,10 +118,7 @@ class Model(eqx.Module):
         self.options = options
 
         # Populate all species
-        self.species_list, self.species_dict = model_setup.populate_species(
-            user_species,
-            options,
-        )
+        self.species_list = model_setup.populate_species(user_species, options)
 
         # Initialize perturbation evolver
         k_axis_perturbations, k_axis_Pk_output, k_min, k_max_cmb = (
@@ -130,7 +126,6 @@ class Model(eqx.Module):
         )
         self.PE = perturbations.PerturbationEvolver(
             self.species_list,
-            self.species_dict,
             k_axis_perturbations,
             options,
             adjoint=adjoint,

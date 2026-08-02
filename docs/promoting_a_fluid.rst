@@ -33,8 +33,8 @@ Step 1: move the class into the ``abcmb/species/`` package
 Copy the class from the notebook into a new module under ``abcmb/species/``
 (one file per species; base classes live in ``base.py``), and re-export it in
 ``abcmb/species/__init__.py`` (import + ``__all__`` entry). Coupled fluids
-find their partners at runtime through ``species_dict`` — never import a
-sibling species module.
+find their partners at runtime by name — ``args.find("Photon",
+StandardFluid)`` — never import a sibling species module.
 
 The base-class contracts are enforced, so an incomplete promotion fails loudly
 rather than subtly:
@@ -158,9 +158,9 @@ Pitfalls
 * **Old configs keep working.** Once the parameter is declared, config files
   that supplied it stop warning and start validating; nothing breaks — but a
   previously-tolerated out-of-bounds value will now warn.
-* **Name changes are breaking.** ``species_dict`` lookups, saved run files
-  (the species drift check), and coupled fluids all key on ``name`` — treat a
-  promoted fluid's name as API.
+* **Name changes are breaking.** Coupling lookups (``args.find``), saved run
+  files (the species drift check), and coupled fluids all key on ``name`` —
+  treat a promoted fluid's name as API.
 * **Options are read-only after resolution.** Never stash computed values into
   the ``options`` dict — return them explicitly instead — and annotate any new
   function taking options with ``options: "Options"`` so the type checker

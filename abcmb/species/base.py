@@ -3,7 +3,7 @@ Fluid base classes and the fluid-interface type aliases.
 """
 
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, ClassVar, NamedTuple
+from typing import TYPE_CHECKING, ClassVar, NamedTuple, TypeVar, cast
 
 import equinox as eqx
 import jax.numpy as jnp
@@ -23,23 +23,31 @@ config.update("jax_enable_x64", True)
 # Params is assignable to this, so library internals keep key-name checking.
 FluidParams = Mapping[str, Array]
 
+_F = TypeVar("_F", bound="Fluid")
+
 
 class PerturbationContext(NamedTuple):
     """
     Everything a fluid's ``y_prime`` may need beyond its own state: the
-    background cosmology, the params mapping, and the species registry for
+    background cosmology, the params mapping, and the species tuple for
     coupled fluids.
 
-    Prefer attribute access (``args.params``, ``args.species_dict``); the
-    context also unpacks positionally as ``(BG, params, species_list,
-    species_dict)`` for backward compatibility, but positional unpacking is
+    Prefer attribute access (``args.params``) and ``args.find(name, cls)``
+    for coupled-fluid lookups; the context also unpacks positionally as
+    ``(BG, params, species_list)``, but positional unpacking is
     arity-coupled if fields are ever added.
     """
 
     BG: "Background"
     params: FluidParams
     species_list: "tuple[Fluid, ...]"
-    species_dict: dict[str, int]
+
+    def find(self, name: str, cls: "type[_F] | None" = None) -> "_F":
+        """
+        Return the fluid named ``name``, optionally narrowed to ``cls`` --
+        the coupled-fluid lookup (see :func:`find_species`).
+        """
+        return find_species(self.species_list, name, cls)
 
 
 # output_perturbations receives only the background half of the context.
@@ -188,6 +196,35 @@ class Fluid(eqx.Module):
            {quantity_name: array(Nlna, Nk)}. Empty for background-only species.
         """
         return {}
+
+
+def find_species(
+    species_list: "tuple[Fluid, ...]", name: str, cls: "type[_F] | None" = None
+) -> "_F":
+    """
+    Return the fluid named ``name`` from ``species_list``. Passing ``cls``
+    narrows the static type and raises ``TypeError`` if the named fluid does
+    not implement that interface -- pass the interface the caller actually
+    relies on (e.g. ``StandardFluid`` for the delta/theta layout).
+
+    A linear scan on purpose: fluid lookups run at trace time (or eagerly,
+    once), never inside compiled code, and a cosmology holds a handful of
+    fluids, so a name->index cache would be pure bookkeeping.
+    """
+    for s in species_list:
+        if s.name != name:
+            continue
+        if cls is not None and not isinstance(s, cls):
+            raise TypeError(
+                f"the fluid named '{name}' is a {type(s).__name__}, not a "
+                f"{cls.__name__} subclass: the caller requires that "
+                f"interface. To customize it, subclass species.{cls.__name__} "
+                "(see docs/promoting_a_fluid.rst)."
+            )
+        return cast("_F", s)
+    raise ValueError(
+        f"no fluid named '{name}'; this model has {[s.name for s in species_list]}."
+    )
 
 
 class StandardFluid(Fluid):

@@ -1,5 +1,6 @@
 """
-Baryons. Coupled to the Photon fluid at runtime via species_dict
+Baryons. Coupled to the Photon fluid at runtime via a name lookup
+(``args.find``), deliberately not an import.
     Follows Ma & Bertschinger (1995), ApJ 455, 7 (arXiv:astro-ph/9506072).
 """
 
@@ -61,11 +62,9 @@ class Baryon(StandardFluid):
 
         """
         BG, params = args.BG, args.params
-        # Get photon class from list
-        photon = args.species_list[args.species_dict["Photon"]]
-        # The baryon-photon coupling needs the delta/theta/sigma layout;
-        # narrows the type and fails loudly if a Photon replacement isn't one.
-        assert isinstance(photon, StandardFluid)
+        # Coupled partner: the baryon-photon coupling needs the
+        # delta/theta/sigma layout, so narrow to StandardFluid.
+        photon = args.find("Photon", StandardFluid)
 
         Tm = BG.Tm(lna, params)  # Baryon temp
         Tg = BG.TCMB(lna, params)  # Photon temp
@@ -130,11 +129,9 @@ class Baryon(StandardFluid):
             Time derivatives of perturbation modes (units: 1/Mpc for theta, else dimensionless)
         """
         BG, params = args.BG, args.params
-        # Get photon class from list
-        photon = args.species_list[args.species_dict["Photon"]]
-        # The baryon-photon coupling needs the delta/theta/sigma layout;
-        # narrows the type and fails loudly if a Photon replacement isn't one.
-        assert isinstance(photon, StandardFluid)
+        # Coupled partner: the baryon-photon coupling needs the
+        # delta/theta/sigma layout, so narrow to StandardFluid.
+        photon = args.find("Photon", StandardFluid)
 
         aH = BG.aH(lna, params)
         cs2 = self.cs2(lna, args)

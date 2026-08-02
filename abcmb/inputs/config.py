@@ -79,7 +79,7 @@ def check_replay_species(recorded, model):
     """
     if recorded is None:
         return
-    current = list(model.species_dict)
+    current = [s.name for s in model.species_list]
     if current != recorded:
         raise ValueError(
             f"replay species mismatch: the run file records {recorded} but the "

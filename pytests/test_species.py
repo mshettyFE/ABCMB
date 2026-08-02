@@ -16,7 +16,7 @@ def _options():
 
 
 def test_duplicate_species_name_raises():
-    # species_dict and the perturbation output tables are keyed by name; a
+    # Coupling lookups and the perturbation output tables are keyed by name; a
     # duplicate would silently shadow the earlier fluid in every coupling
     # lookup, so registration must fail loudly instead.
     from abcmb import model_setup, species
@@ -40,8 +40,8 @@ def test_missing_required_role_raises():
     with pytest.raises(ValueError, match="no fluid named 'Baryon'"):
         model_setup.populate_species((species.ColdDarkMatter,), options)
     # ...and present roles satisfy the check (full LCDM set builds fine).
-    species_list, species_dict = model_setup.populate_species(None, _options())
-    assert {"Baryon", "Photon"} <= set(species_dict)
+    species_list = model_setup.populate_species(None, _options())
+    assert {"Baryon", "Photon"} <= {s.name for s in species_list}
 
 
 def test_user_species_non_fluid_class_raises():
@@ -134,7 +134,7 @@ def test_scalar_contract_probe_skips_unprobeable(lcdm_model):
             return 0.0
 
     with pytest.warns(UserWarning, match="Unprobeable.rho could not be probed"):
-        species_list, _ = model_setup.populate_species((Unprobeable,), _options())
+        species_list = model_setup.populate_species((Unprobeable,), _options())
     assert any(s.name == "Unprobeable" for s in species_list)
 
 
@@ -413,7 +413,7 @@ def test_adiabatic_ic_relations(lcdm_model):
 
     # Massive-nu bins vs the massless-nu ICs they must encode.
     mn = species.MassiveNeutrino(1, lcdm_model.options)
-    ml = lcdm_model.species_list[lcdm_model.species_dict["MasslessNeutrino"]]
+    ml = species.find_species(lcdm_model.species_list, "MasslessNeutrino")
     k, tau = 0.05, 0.5
     y_ml = np.asarray(ml.y_ini(k, tau, params))[:3]
     y_mn = np.asarray(mn.y_ini(k, tau, params))
@@ -436,7 +436,7 @@ def test_adiabatic_ic_relations(lcdm_model):
             theta = -(k**3) * tau_ini**3 / 36.0  # k^3, not k^4
             return jnp.array([delta, theta])
 
-    photon = lcdm_model.species_list[lcdm_model.species_dict["Photon"]]
+    photon = species.find_species(lcdm_model.species_list, "Photon")
     wrong = WrongIC(1, lcdm_model.options)
     a = adiabatic_ic_residuals([photon, wrong], params)
     assert a["WrongIC.delta"] > 0.1, "adiabaticity validator missed a wrong ratio"
@@ -472,8 +472,10 @@ def test_dimensional_scaling(lcdm_model):
         return q
 
     lam, lna = 2.0, -3.0
-    sl, sd = lcdm_model.species_list, lcdm_model.species_dict
-    photon, ml, baryon = sl[sd["Photon"]], sl[sd["MasslessNeutrino"]], sl[sd["Baryon"]]
+    sl = lcdm_model.species_list
+    photon = species.find_species(sl, "Photon")
+    ml = species.find_species(sl, "MasslessNeutrino")
+    baryon = species.find_species(sl, "Baryon")
 
     checks = {
         "photon rho ~ TCMB0^4": photon.rho(lna, scaled(params, TCMB0=lam))
@@ -532,7 +534,7 @@ def test_massive_nu_relativistic_limit(lcdm_model):
     p["T_nu_massless"] = params["T_nu_massive"]
 
     mn = species.MassiveNeutrino(1, lcdm_model.options)
-    ml = lcdm_model.species_list[lcdm_model.species_dict["MasslessNeutrino"]]
+    ml = species.find_species(lcdm_model.species_list, "MasslessNeutrino")
     ratio = float(mn.rho(-8.0, p) / ml.rho(-8.0, p))
     assert abs(ratio - 1.0) < 2e-3, f"relativistic-limit rho ratio {ratio:.6f}"
     w = float(mn.P(-8.0, p) / mn.rho(-8.0, p))

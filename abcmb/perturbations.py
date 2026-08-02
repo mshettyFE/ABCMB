@@ -17,7 +17,7 @@ from jaxtyping import Array
 
 from . import constants as cnst
 from .inputs.schema import KBatchStrategy
-from .species import Baryon, Fluid, PerturbationContext, StandardFluid
+from .species import Baryon, Fluid, PerturbationContext, StandardFluid, find_species
 
 if TYPE_CHECKING:
     from .inputs._schema_types import Options
@@ -61,10 +61,8 @@ class PerturbationEvolver(eqx.Module):
     Attributes:
     -----------
     species_list : tuple
-        A list of all fluids in the cosmology
-    species_dict : dict
-        Maps each fluid's name to its index in species_list
-        (the coupling registry).
+        A list of all fluids in the cosmology; coupled fluids are looked
+        up in it by name (``species.find_species``).
     k_axis_perturbations : Array
         A list of wavenumbers k at which to compute perturbations
     options : dict
@@ -83,7 +81,6 @@ class PerturbationEvolver(eqx.Module):
     """
 
     species_list: tuple[Fluid, ...]
-    species_dict: dict[str, int]
     k_axis_perturbations: Array
     options: "Options"
 
@@ -92,13 +89,11 @@ class PerturbationEvolver(eqx.Module):
     def __init__(
         self,
         species_list,
-        species_dict,
         k_axis_perturbations=jnp.geomspace(1.0e-4, 0.4, 600),
         options={},
         adjoint: type[diffrax.AbstractAdjoint] = diffrax.ForwardMode,
     ):
         self.species_list = species_list
-        self.species_dict = species_dict
         self.k_axis_perturbations = k_axis_perturbations
         self.options = options
         self.adjoint = adjoint
@@ -292,7 +287,7 @@ class PerturbationEvolver(eqx.Module):
 
         # The single fluid-facing context, shared by the rho_* aggregates
         # here and the y_prime calls below.
-        ctx = PerturbationContext(BG, params, self.species_list, self.species_dict)
+        ctx = PerturbationContext(BG, params, self.species_list)
 
         # Metric perturbation derivatives
         sum_rho_delta = 0.0
@@ -452,14 +447,12 @@ class PerturbationEvolver(eqx.Module):
 
         # Baryon velocity derivative — backward-calculated from the Boltzmann equations.
         # Requires the Baryon and Photon objects for cs2 and the coupling R.
-        baryon = self.species_list[self.species_dict["Baryon"]]
-        photon = self.species_list[self.species_dict["Photon"]]
         # Structural requirements on the named roles (narrows the types; fails
-        # loudly at trace time for an incompatible replacement): the Baryon
-        # role needs cs2 and the standard layout, the Photon role the layout.
-        assert isinstance(baryon, Baryon)
-        assert isinstance(photon, StandardFluid)
-        ctx = PerturbationContext(BG, params, self.species_list, self.species_dict)
+        # loudly for an incompatible replacement): the Baryon role needs cs2
+        # and the standard layout, the Photon role the layout.
+        baryon = find_species(self.species_list, "Baryon", Baryon)
+        photon = find_species(self.species_list, "Photon", StandardFluid)
+        ctx = PerturbationContext(BG, params, self.species_list)
         delta_b = baryon.get_delta(lna, modes, ctx)
         theta_b = baryon.get_theta(lna, modes, ctx)
         theta_g = photon.get_theta(lna, modes, ctx)
