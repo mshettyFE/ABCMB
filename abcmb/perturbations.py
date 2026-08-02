@@ -370,8 +370,9 @@ class PerturbationEvolver(eqx.Module):
             for s in self.species_list
         }
 
-        # Baryon velocity derivative — backward-calculated from the Boltzmann equations.
-        # Requires the Baryon and Photon objects for cs2 and the coupling R.
+        # Baryon velocity derivative — back-computed here via the fluid's own
+        # Baryon.theta_prime (diffrax saves states, not derivatives), so the
+        # Doppler source uses the same equation the ODE evolved.
         # Structural requirements on the named roles (narrows the types; fails
         # loudly for an incompatible replacement): the Baryon role needs cs2
         # and the standard layout, the Photon role the layout.
@@ -388,18 +389,13 @@ class PerturbationEvolver(eqx.Module):
         # the scalar contract, so batching is an explicit vmap here.
         aH = vmap(lambda l: BG.aH(l, params))(lna)[:, None]
         cs2 = vmap(lambda l: baryon.cs2(l, ctx))(lna)[:, None]
-        R = (
-            4.0
-            * vmap(lambda l: photon.rho(l, params))(lna)[:, None]
-            / 3.0
-            / vmap(lambda l: baryon.rho(l, params))(lna)[:, None]
-        )
+        rho_g = vmap(lambda l: photon.rho(l, params))(lna)[:, None]
+        rho_b = vmap(lambda l: baryon.rho(l, params))(lna)[:, None]
+        R = (4.0 * rho_g) / (3.0 * rho_b)
         tau_c = vmap(lambda l: BG.tau_c(l, params))(lna)[:, None]
 
-        theta_b_prime = (
-            -theta_b
-            + cs2 / aH * (karr**2 * delta_b)
-            + R / aH / tau_c * (theta_g - theta_b)
+        theta_b_prime = baryon.theta_prime(
+            karr, delta_b, theta_b, theta_g, aH, cs2, R, tau_c
         )
 
         # Sum density/velocity/shear over all species for metric derivatives and delta_m.
@@ -422,7 +418,6 @@ class PerturbationEvolver(eqx.Module):
 
                 if s.is_matter:
                     sum_rho_delta_m += rho_delta
-                    # Scalar contract: batch rho over the output grid.
                     sum_rho_m += vmap(lambda l: s.rho(l, params))(lna)
 
         delta_m = sum_rho_delta_m / sum_rho_m[:, None]

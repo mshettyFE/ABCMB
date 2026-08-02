@@ -106,6 +106,24 @@ class Baryon(StandardFluid):
         theta = adiabatic_ics.theta_tight_coupled(k, tau_ini, params)
         return jnp.array([delta, theta])
 
+    def theta_prime(
+        self,
+        k: ArrayLike,
+        delta: ArrayLike,
+        theta: ArrayLike,
+        theta_g: ArrayLike,
+        aH: ArrayLike,
+        cs2: ArrayLike,
+        R: ArrayLike,
+        tau_c: ArrayLike,
+    ) -> Array:
+        """
+        Baryon velocity derivative: the theta_b line of Ma & Bertschinger
+        (1995) Eq. (66), with R = 4*rho_g/(3*rho_b) and tau_c the Thomson
+        time, given the background quantities already evaluated at lna.
+        """
+        return -theta + cs2 * k**2 * delta / aH + R / tau_c / aH * (theta_g - theta)
+
     def y_prime(
         self,
         k: ArrayLike,
@@ -139,9 +157,7 @@ class Baryon(StandardFluid):
         theta = y[self.first_idx + 1]
         theta_g = photon.get_theta(lna, y, args)
         delta_prime = -theta / aH - metric_h_prime / 2.0
-        theta_prime = (
-            -theta + cs2 * k**2 * delta / aH + R / tau_c / aH * (theta_g - theta)
-        )
+        theta_prime = self.theta_prime(k, delta, theta, theta_g, aH, cs2, R, tau_c)
 
         return jnp.array([delta_prime, theta_prime])
 
