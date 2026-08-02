@@ -121,6 +121,7 @@ ignore = ["E741"]
 # files using shaped annotations rather than turned off project-wide.
 "abcmb/ABCMBTools.py" = ["F722"]
 "abcmb/model_setup.py" = ["F722"]
+"abcmb/perturbations.py" = ["F722"]
 "abcmb/recomb_interface.py" = ["F722"]
 "abcmb/background.py" = ["F722"]
 "abcmb/reionization.py" = ["F722"]

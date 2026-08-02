@@ -3,7 +3,7 @@ Fluid base classes and the fluid-interface type aliases.
 """
 
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, ClassVar, NamedTuple, TypeVar, cast
+from typing import TYPE_CHECKING, ClassVar, TypeVar, cast
 
 import equinox as eqx
 import jax.numpy as jnp
@@ -26,16 +26,14 @@ FluidParams = Mapping[str, Array]
 _F = TypeVar("_F", bound="Fluid")
 
 
-class PerturbationContext(NamedTuple):
+class PerturbationContext(eqx.Module):
     """
     Everything a fluid's ``y_prime`` may need beyond its own state: the
     background cosmology, the params mapping, and the species tuple for
     coupled fluids.
 
-    Prefer attribute access (``args.params``) and ``args.find(name, cls)``
-    for coupled-fluid lookups; the context also unpacks positionally as
-    ``(BG, params, species_list)``, but positional unpacking is
-    arity-coupled if fields are ever added.
+    Access by attribute (``args.BG``, ``args.params``, ``args.species_list``)
+    and look up coupled fluids with ``args.find(name, cls)``.
     """
 
     BG: "Background"

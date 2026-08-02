@@ -6,24 +6,33 @@ cosmic time using background cosmology and species interactions.
 """
 
 import os
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import diffrax
 import equinox as eqx
 import jax
 import jax.numpy as jnp
 from jax import lax, vmap
-from jaxtyping import Array
+from jax.typing import ArrayLike
+from jaxtyping import Array, Float
 
 from . import constants as cnst
 from .inputs.schema import KBatchStrategy
 from .species import Baryon, Fluid, PerturbationContext, StandardFluid, find_species
 
 if TYPE_CHECKING:
-    from .inputs._schema_types import Options
+    from .background import Background
+    from .inputs._schema_types import Options, Params
 
 file_dir = os.path.dirname(__file__)
 jax.config.update("jax_enable_x64", True)
+
+# The (BG, params) pair threaded through the PerturbationEvolver methods.
+EvolverArgs = tuple["Background", "Params"]
+# What the diffrax vector field (get_derivatives) receives: the evolver pair
+# with the mode's wavenumber prepended (built as ``(k, *args)`` in
+# evolution_one_k).
+DerivativeArgs = tuple[ArrayLike, "Background", "Params"]
 
 
 def _k_batch_strategy(value: str) -> KBatchStrategy:
@@ -64,7 +73,7 @@ class PerturbationEvolver(eqx.Module):
     # up in it by name (``species.find_species``).
     species_list: tuple[Fluid, ...]
     # A list of wavenumbers k at which to compute perturbations
-    k_axis_perturbations: Array = eqx.field(
+    k_axis_perturbations: Float[Array, " n_k"] = eqx.field(
         default_factory=lambda: jnp.geomspace(1.0e-4, 0.4, 600)
     )
     options: "Options" = eqx.field(default_factory=dict)
@@ -72,24 +81,12 @@ class PerturbationEvolver(eqx.Module):
         default=diffrax.ForwardMode, static=True
     )
 
-    def full_evolution(self, args):
+    def full_evolution(self, args: EvolverArgs) -> "PerturbationTable":
         """
         Evolve perturbations for multiple wavenumber modes.
 
         Integrates perturbation equations for a range of k modes,
         then interpolates results onto common time grid.
-
-        Parameters:
-        -----------
-        k    : Array
-            1D axis of wavenumbers k. Perturbations are computed and stored at these values.
-        args : tuple
-            Background cosmology and cosmological parameters (BG, params)
-
-        Returns:
-        --------
-        PerturbationTable
-            Interpolatable table of perturbation evolution
 
         Notes:
         ------
@@ -124,28 +121,11 @@ class PerturbationEvolver(eqx.Module):
         PT = self.make_output_table(lna, res, args)
         return PT
 
-    def get_starting_time(self, k, args):
+    def get_starting_time(self, k: ArrayLike, args: EvolverArgs) -> Float[Array, ""]:
         """
-        Determine tight coupling approximation time range.
-
-        Finds start and end times for tight coupling between photons and baryons
-        by computing when Thomson scattering becomes ineffective relative to
-        Hubble and horizon crossing time scales.
-
-        Parameters:
-        -----------
-        args : tuple
-            Background cosmology and cosmological parameters (BG, params)
-
-        Returns:
-        --------
-        tuple
-            (lna_start, lna_end) for tight coupling period
-
-        Notes:
-        ------
-        Uses thresholds: τc/τh < 0.0015 (start), τh/τk < 0.07 (start),
-        τc/τh > 0.015 (end), τc/τk > 0.01 (end).
+        Determine the integration starting time for one mode.
+        Thresholds: τc/τh < ``R_tc`` (tight coupling) and τh/τk < ``R_large``
+        (superhorizon); the earlier of the two crossings wins.
         """
         BG, params = args
 
@@ -168,26 +148,17 @@ class PerturbationEvolver(eqx.Module):
 
         return lna_ini
 
-    def initial_conditions_one_k(self, k, lna_ini, args):
+    def initial_conditions_one_k(
+        self, k: ArrayLike, lna_ini: ArrayLike, args: EvolverArgs
+    ) -> Float[Array, " n_y"]:
         """
         Compute initial conditions for perturbation evolution.
 
         Sets up initial values for metric and fluid perturbations at early times
         using adiabatic initial conditions.
 
-        Parameters:
-        -----------
-        k : float
-            Wavenumber (units: Mpc^{-1})
-        lna_ini : float
-            Initial logarithm of scale factor
-        args : tuple
-            Background cosmology and cosmological parameters (BG, params)
-
         Returns:
-        --------
-        array
-            Initial perturbation state vector
+           Initial perturbation state vector
 
         Notes:
         ------
@@ -233,26 +204,19 @@ class PerturbationEvolver(eqx.Module):
 
         return y_ini
 
-    def get_derivatives(self, lna, y, args):
+    def get_derivatives(
+        self, lna: ArrayLike, y: Float[Array, " n_y"], args: DerivativeArgs
+    ) -> Float[Array, " n_y"]:
         """
         Compute time derivatives for perturbation evolution.
 
         Assembles the full system of Einstein-Boltzmann equations for
         metric and fluid perturbations in synchronous gauge.
 
-        Parameters:
-        -----------
-        lna : float
-            Logarithm of scale factor
         y : array
             Current perturbation state vector
-        args : tuple
-            Wavenumber k and background cosmology (k, BG, params)
-
         Returns:
-        --------
-        array
-            Time derivatives of perturbation state
+           Time derivatives of perturbation state
         """
         k, BG, params = args
         a = jnp.exp(lna)
@@ -311,26 +275,19 @@ class PerturbationEvolver(eqx.Module):
 
         return y_prime
 
-    def evolution_one_k(self, k, lna, args):
+    def evolution_one_k(
+        self, k: ArrayLike, lna: Float[Array, " n_lna"], args: EvolverArgs
+    ) -> Float[Array, "n_lna n_y"]:
         """
         Evolve perturbations for single wavenumber mode.
 
         Integrates Einstein-Boltzmann equations from early times through
         recombination to late times using adaptive time stepping.
 
-        Parameters:
-        -----------
-        k : float
-            Wavenumber (units: Mpc^{-1})
-        lna : array
-            Logarithm of scale factor grid for output
-        args : tuple
-            Background cosmology and cosmological parameters (BG, params)
-
         Returns:
         --------
-        diffrax.Solution
-            Dense solution object for interpolation
+        array
+            Perturbation state at each requested lna, shape
 
         """
 
@@ -386,27 +343,25 @@ class PerturbationEvolver(eqx.Module):
             adjoint=adjoint,
         )
 
-        return sol.ys
+        # sol.ys is typed PyTree | None (None only without SaveAt(ts=...),
+        # which this solve always passes).
+        return cast(Array, sol.ys)
 
-    def make_output_table(self, lna, modes, args):
+    def make_output_table(
+        self,
+        lna: Float[Array, " n_lna"],
+        modes: Float[Array, "n_y n_lna n_k"],
+        args: EvolverArgs,
+    ) -> "PerturbationTable":
         """
         Create interpolatable perturbation table from evolution results.
 
         Extracts key perturbation modes and computes derived quantities.
 
-        Parameters:
-        -----------
-        lna : array
-            Logarithm of scale factor grid
-        modes : array
+        modes
             Perturbation evolution results
-        args : tuple
-            Background cosmology and cosmological parameters (BG, params)
-
         Returns:
-        --------
-        PerturbationTable
-            Organized perturbation data for interpolation
+           Organized perturbation data for interpolation
 
         """
         k = self.k_axis_perturbations
@@ -556,15 +511,15 @@ class PerturbationTable(eqx.Module):
         Species with no perturbations (e.g. dark energy) map to {}.
     """
 
-    k: Array
-    lna: Array
-    delta_m: Array
-    theta_b_prime: Array
+    k: Float[Array, " n_k"]
+    lna: Float[Array, " n_lna"]
+    delta_m: Float[Array, "n_lna n_k"]
+    theta_b_prime: Float[Array, "n_lna n_k"]
 
-    metric_eta: Array
-    metric_h_prime: Array
-    metric_eta_prime: Array
-    metric_alpha: Array
-    metric_alpha_prime: Array
+    metric_eta: Float[Array, "n_lna n_k"]
+    metric_h_prime: Float[Array, "n_lna n_k"]
+    metric_eta_prime: Float[Array, "n_lna n_k"]
+    metric_alpha: Float[Array, "n_lna n_k"]
+    metric_alpha_prime: Float[Array, "n_lna n_k"]
 
-    species_perturbations: dict
+    species_perturbations: dict[str, dict[str, Float[Array, "n_lna n_k"]]]
