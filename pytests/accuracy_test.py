@@ -9,7 +9,10 @@ from abcmb.main import Model
 np.seterr(all="raise")
 
 
-def test_accuracy_checker(h=0.6762):
+@pytest.mark.parametrize(
+    "n_nu_massive", [0, 1], ids=["massless_only", "one_massive_nu"]
+)
+def test_accuracy_checker(n_nu_massive, h=0.6762):
     ellmin = 2
     ellmax = 2500
     try:
@@ -24,7 +27,7 @@ def test_accuracy_checker(h=0.6762):
             "Neff": 3.044,
             "YHe": 0.245,
             "TCMB0": 2.34865418e-4,
-            "N_nu_massive": 0,
+            "N_nu_massive": n_nu_massive,
             "T_nu_massive": 0.71611,
             "m_nu_massive": 0.06,
             "tau_reion": 0.0544,
@@ -51,6 +54,12 @@ def test_accuracy_checker(h=0.6762):
         )
         full_params = model.add_derived_parameters(params)
 
+        T_nu_std = (4.0 / 11.0) ** (1.0 / 3.0)
+        N_ur = (
+            float(full_params["N_nu_massless"])
+            * (float(full_params["T_nu_massless"]) / T_nu_std) ** 4
+        )
+
         # CLASS
         CLASS_params = {
             "output": "mPk, tCl, pCl, lCl"
@@ -66,7 +75,7 @@ def test_accuracy_checker(h=0.6762):
             "omega_cdm": full_params["omega_cdm"],
             "A_s": full_params["A_s"],
             "n_s": full_params["n_s"],
-            "N_ur": full_params["Neff"],
+            "N_ur": N_ur,
             "YHe": full_params["YHe"],
             "N_ncdm": full_params["N_nu_massive"],
             # "reio_parametrization" : "reio_none",
