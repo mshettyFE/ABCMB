@@ -1,8 +1,14 @@
 # Local git hooks. Install once with:
 #     uvx pre-commit install --install-hooks --hook-type pre-commit --hook-type pre-push
 #
-# Lint + format run on every `git commit`; the (slow) accuracy test runs on
-# `git push`. CI runs the same hooks server-side.
+# Lint + format run on every `git commit`; the fast test suite runs on
+# `git push`. CI runs the same hooks server-side, plus the slow CLASS
+# accuracy comparisons and the example notebooks.
+#
+# The accuracy tests are deliberately NOT in the pre-push hook: they take
+# ~10 min (two CLASS comparisons at l_max=2500 with lensing), which is long
+# enough that the hook would get routinely bypassed with --no-verify. They
+# run in CI on every push instead, so nothing is lost -- just made async.
 #
 # Not wired as hooks, but available with the `test` extra:
 #   uv run pytest --cov --cov-report=term-missing   # coverage of abcmb/
@@ -19,8 +25,8 @@ repos:
   - repo: local
     hooks:
       - id: pytest
-        name: pytest (accuracy test vs CLASS)
-        entry: uv run --extra test pytest -q pytests
+        name: pytest (fast suite; accuracy tests run in CI)
+        entry: uv run --extra test pytest -q pytests --ignore=pytests/accuracy_test.py
         language: system
         pass_filenames: false
         always_run: true

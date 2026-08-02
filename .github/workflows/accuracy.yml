@@ -1,8 +1,11 @@
 name: Run Tests
 
+# Runs on every branch, not just main: the pre-push hook only runs the fast
+# suite, so the slow CLASS accuracy comparisons and the notebooks are checked
+# here. Without this, work on a feature branch has no server-side gate at all.
 on:
   push:
-    branches: [main]
+    branches: ['**']
   pull_request:
     branches: [main]
 
