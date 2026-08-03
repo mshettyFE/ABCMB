@@ -12,6 +12,15 @@ set -euo pipefail
 
 RUFF="uvx ruff@0.15.20"
 
+# `uv run --extra X` REPLACES the environment's extras, so a bare `--extra test`
+# uninstalls the CUDA jaxlib on a GPU box and silently drops every later run to
+# CPU. Carry the gpu extra through unless ABCMB_NO_GPU=1 (CPU-only machines and
+# CI, where installing ~2 GB of CUDA wheels would be waste).
+GPU_EXTRA="--extra gpu"
+if [ "${ABCMB_NO_GPU:-0}" = "1" ]; then
+    GPU_EXTRA=""
+fi
+
 usage() {
     cat <<'EOF'
 Run the linter, formatter check, docs build, and tests (mirrors CI).
@@ -35,7 +44,7 @@ EOF
 run_notebooks() {
     echo ">> nbmake (execute example notebooks)"
     # The explicit path overrides testpaths (= pytests) from pyproject.toml.
-    uv run --extra test pytest --nbmake --nbmake-timeout=1800 example_notebooks
+    uv run --extra test $GPU_EXTRA pytest --nbmake --nbmake-timeout=1800 example_notebooks
 }
 
 build_docs() {
@@ -81,7 +90,7 @@ case "${1:-}" in
         # Gating. jax/equinox stub-noise rules are suppressed in [tool.pyright];
         # the high-signal rules (TypedDict keys, attribute access, invalid type
         # forms) catch real typos in options/params/field access.
-        uv run --extra dev pyright
+        uv run --extra dev $GPU_EXTRA pyright
         build_docs
         ;;
     *)
@@ -92,4 +101,4 @@ case "${1:-}" in
 esac
 
 echo ">> pytest (with coverage)"
-uv run --extra test pytest -s -vv --cov --cov-report=term-missing pytests
+uv run --extra test $GPU_EXTRA pytest -s -vv --cov --cov-report=term-missing pytests

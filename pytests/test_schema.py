@@ -402,3 +402,49 @@ def test_negative_lambda_budget_raises():
         params["Neff"] = 3.044
         with pytest.raises(ValueError, match="omega_Lambda"):
             model.add_derived_parameters(params)
+
+
+@pytest.mark.slow
+def test_linx_bbn_backend_produces_standard_abundances():
+    #   Neff = 3.044 is the standard precise neutrino-decoupling result
+    #     (e.g. de Salas & Pastor, JCAP 07 (2016) 051, arXiv:1606.06986;
+    #      Froustey et al. 2020, arXiv:2008.01074).
+    #   Y_p ~ 0.245-0.247 is the standard BBN helium prediction at the
+    #     Planck baryon density (Planck 2018 VI, arXiv:1807.06209, uses
+    #     Y_p^BBN = 0.2467). ABCMB reports the true mass fraction, which is
+    #     slightly below the nucleon-counting value LINX returns.
+    # Bands are wide enough to tolerate reaction-rate/backend choices but
+    # tight enough that a unit-conversion or unpacking error fails.
+    import warnings
+
+    from abcmb.main import Model
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        model = Model(l_max=100, bbn_type="linx")
+        full = model.add_derived_parameters(_base_params_no_neutrinos())
+
+    Neff = float(full["Neff"])
+    YHe = float(full["YHe"])
+    T_nu = float(full["T_nu_massless"])
+
+    assert 3.00 < Neff < 3.10, f"LINX Neff = {Neff}"
+    assert 0.235 < YHe < 0.255, f"LINX YHe = {YHe}"
+    # T_nu_massless is a ratio to T_gamma; (4/11)^(1/3) = 0.7138
+    assert 0.713 < T_nu < 0.720, f"LINX T_nu/T_gamma = {T_nu}"
+
+    # LINX supplies Neff, so the massless count must be re-derived from it
+    # (the `return True` branch of _compute_helium_fraction).
+    assert 2.9 < float(full["N_nu_massless"]) < 3.1
+
+    # The derived densities still close: LINX's outputs feed the same budget.
+    assert float(full["omega_r"]) > 0.0
+    assert float(full["omega_Lambda"]) > 0.0
+
+
+def _base_params_no_neutrinos():
+    # LINX computes Neff/T_nu_massless itself, so neutrino inputs must be absent.
+    p = _base_params()
+    p.pop("Neff", None)
+    p.pop("N_nu_massless", None)
+    return p

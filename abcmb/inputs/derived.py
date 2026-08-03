@@ -215,19 +215,12 @@ def _helium_from_linx(
         ),
     )
 
-    try:
-        params["T_nu_massless"] = jax.device_put(
-            linxThermo.T_nu(rho_nu_vec[-1]) / linxThermo.T_g(rho_g_vec[-1]),
-            device=jax.devices("gpu")[0],
-        )
-        params["Neff"] = jax.device_put(Neff_vec[-1], device=jax.devices("gpu")[0])
-        YHe_BBN = jax.device_put(4 * abundances[5], device=jax.devices("gpu")[0])
-    except Exception:  # no GPU
-        params["T_nu_massless"] = linxThermo.T_nu(rho_nu_vec[-1]) / linxThermo.T_g(
-            rho_g_vec[-1]
-        )
-        params["Neff"] = Neff_vec[-1]
-        YHe_BBN = 4 * abundances[5]
+    device = jax.devices()[0]
+    params["T_nu_massless"] = jax.device_put(
+        linxThermo.T_nu(rho_nu_vec[-1]) / linxThermo.T_g(rho_g_vec[-1]), device
+    )
+    params["Neff"] = jax.device_put(Neff_vec[-1], device)
+    YHe_BBN = jax.device_put(4 * abundances[5], device)
 
     # CMB uses the real mass fraction
     params["YHe"] = 1.0 / (4 * cnst.mH / cnst.mHe * (1 / YHe_BBN - 1) + 1)

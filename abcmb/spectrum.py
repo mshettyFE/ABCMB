@@ -24,17 +24,16 @@ phi1_tab = jnp.array(np.loadtxt(file_dir + "/bessel_tab/phi1.txt"))
 xphi2_tab = jnp.array(np.loadtxt(file_dir + "/bessel_tab/xphi2.txt"))
 phi2_tab = jnp.array(np.loadtxt(file_dir + "/bessel_tab/phi2.txt"))
 
-try:
-    gpus = jax.devices("gpu")
-    bessel_l_tab = jax.device_put(bessel_l_tab, device=gpus[0])
-    xphi0_tab = jax.device_put(xphi0_tab, device=gpus[0])
-    phi0_tab = jax.device_put(phi0_tab, device=gpus[0])
-    xphi1_tab = jax.device_put(xphi1_tab, device=gpus[0])
-    phi1_tab = jax.device_put(phi1_tab, device=gpus[0])
-    xphi2_tab = jax.device_put(xphi2_tab, device=gpus[0])
-    phi2_tab = jax.device_put(phi2_tab, device=gpus[0])
-except Exception:
-    pass
+# Commit the tables to the default device (the accelerator when there is one,
+# otherwise a no-op)
+_tab_device = jax.devices()[0]
+bessel_l_tab = jax.device_put(bessel_l_tab, _tab_device)
+xphi0_tab = jax.device_put(xphi0_tab, _tab_device)
+phi0_tab = jax.device_put(phi0_tab, _tab_device)
+xphi1_tab = jax.device_put(xphi1_tab, _tab_device)
+phi1_tab = jax.device_put(phi1_tab, _tab_device)
+xphi2_tab = jax.device_put(xphi2_tab, _tab_device)
+phi2_tab = jax.device_put(phi2_tab, _tab_device)
 
 
 # large-x asymptotic expansion of spherical bessel functions

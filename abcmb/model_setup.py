@@ -22,21 +22,6 @@ if TYPE_CHECKING:
     from .inputs._schema_types import Options
 
 
-class _ProbeFluidParams(dict):
-    """Returns a scalar zero for every key, so the eval_shape probe can
-    trace rho/P without a real params dict (none exists at construction).
-
-    ``get`` is overridden because ``dict.get`` bypasses ``__missing__``.
-    Keep as a closure: a jax pytree boundary flattens it to a plain dict.
-    """
-
-    def __missing__(self, key):
-        return jnp.zeros(())
-
-    def get(self, key, default=None):
-        return self[key]
-
-
 def _check_scalar_contract(instance: species.Fluid) -> None:
     """Construction-time probe: rho/P must be scalar-in, scalar-out.
 
@@ -47,7 +32,7 @@ def _check_scalar_contract(instance: species.Fluid) -> None:
     evaluated is warned about and skipped, never rejected.
     """
     probe_lna = jax.ShapeDtypeStruct((), jnp.float64)
-    probe_params = _ProbeFluidParams()
+    probe_params = {}
     for method_name in ("rho", "P"):
         fn = getattr(instance, method_name)
         try:

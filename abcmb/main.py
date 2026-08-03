@@ -236,10 +236,9 @@ class Model(eqx.Module):
 
         recomb_output = eqx.filter_jit(self.RecModel)((recomb_inputs_cpu, params_cpu))
 
-        try:
-            recomb_output = jax.device_put(recomb_output, jax.devices("gpu")[0])
-        except Exception:
-            pass
+        # ...and hand the result back to the default device
+        # GPU if available, otherwise CPU
+        recomb_output = jax.device_put(recomb_output, jax.devices()[0])
 
         return self._run_post_recomb(params, pre_BG, recomb_output)
 
