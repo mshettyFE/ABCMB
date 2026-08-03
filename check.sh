@@ -78,7 +78,7 @@ case "${1:-}" in
         echo ">> ruff check --fix (applying)"
         $RUFF check --fix .
         echo ">> regenerate schema artifacts (defaults.toml, inputs/_schema_types.py)"
-        uv run python -m abcmb.inputs._codegen
+        uv run python -m abcmb._generators.schema_types
         exit 0
         ;;
     "")

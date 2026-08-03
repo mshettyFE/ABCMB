@@ -88,7 +88,9 @@ abcmb = [
     # every ABCMB symbol and the inline annotations are ignored by their
     # type checker.
     "py.typed",
-    "bessel_tab/*.txt",
+    # Tabulated spherical-Bessel kernels (regenerate with
+    # python -m abcmb._generators.bessel_tables).
+    "bessel_tab/*.npz",
     "hyrex/tabs/*.dat",
     "linx/data/*",
     "linx/data/background/*.txt",
@@ -115,12 +117,12 @@ omit = [
     # should not be diluted (or flattered) by them.
     "abcmb/linx/*",
     "abcmb/hyrex/*",
-    # Generated from the schema, and a build-time tool rather than runtime code.
+    # Generated from the schema.
     "abcmb/inputs/_schema_types.py",
-    "abcmb/inputs/_codegen.py",
-    # Offline provenance for the CAMB quadrature stencils; imported only by
-    # the pinning test that regenerates them.
-    "abcmb/species/_camb_stencil_generation.py",
+    # Offline provenance for the committed artifacts (Bessel tables, CAMB
+    # quadrature stencils, schema types): build-time tooling rather than
+    # runtime code, imported only by the pinning tests that regenerate them.
+    "abcmb/_generators/*",
 ]
 
 [tool.coverage.report]

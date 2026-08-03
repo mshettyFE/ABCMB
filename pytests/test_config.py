@@ -88,7 +88,7 @@ def test_generated_artifacts_are_fresh():
     # *verify*; regenerate with `./check.sh fix` or `abcmb --dump-{defaults,types}`).
     from pathlib import Path
 
-    from abcmb.inputs._codegen import dump_types
+    from abcmb._generators.schema_types import dump_types
     from abcmb.inputs.config import dump_defaults
 
     root = Path(__file__).parents[1]

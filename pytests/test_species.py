@@ -97,6 +97,16 @@ def test_user_species_instance_raises():
         model_setup.populate_species((instance,), _options())
 
 
+def test_uniform_gauge():
+    # Defaults to synchronous gauge
+    # Run on LCDM model
+    from abcmb import model_setup, species
+
+    species_list = model_setup.populate_species(None, _options())
+    gauges = [s.gauge_type for s in species_list]
+    assert all([g == species.GaugeType.SYNCHRONOUS for g in gauges])
+
+
 def test_scalar_contract_probe_rejects_array_rho(lcdm_model):
     # Construction-time probe (jax.eval_shape, no numerics): a fluid whose
     # rho returns an array for scalar lna would break species stacks and
@@ -308,7 +318,7 @@ def test_massive_nu_quadrature_stencils():
     # Provenance pins: the vendored generator (arXiv:1201.3654 Appendix A
     # moment matching) must reproduce both carried stencils to their
     # published digits (truncation radius ~2e-6, thresholds ~3x).
-    from abcmb.species._camb_stencil_generation import (
+    from abcmb._generators.camb_stencils import (
         camb_five_point_rule,
         camb_three_point_rule,
     )

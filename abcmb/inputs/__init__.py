@@ -7,5 +7,5 @@ resolved options/params the solver consumes.
 * :mod:`.config` -- TOML front door (load_config, model_from_config, save_run).
 * :mod:`.provenance` -- run-file environment stamps and drift detection.
 * :mod:`._schema_types` -- generated Options/Params TypedDicts (type-check only).
-* :mod:`._codegen` -- regenerates the committed schema artifacts.
+* :mod:`abcmb._generators.schema_types` -- regenerates the committed schema artifacts.
 """

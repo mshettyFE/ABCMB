@@ -58,7 +58,9 @@ def _check_scalar_contract(instance: species.Fluid) -> None:
 
 
 def populate_species(
-    user_species: "Sequence[type[species.Fluid]] | None", options: "Options"
+    user_species: "Sequence[type[species.Fluid]] | None",
+    options: "Options",
+    gauge_type: species.GaugeType = species.GaugeType.SYNCHRONOUS,
 ) -> "tuple[species.Fluid, ...]":
     """
     Instantiate the model's fluid stack: the baseline LCDM species (when
@@ -107,7 +109,7 @@ def populate_species(
                 f"{s.__name__}, which does not inherit from Fluid "
                 "(see docs/promoting_a_fluid.rst)."
             )
-        instance = s(diffrax_vector_idx, options)
+        instance = s(diffrax_vector_idx, options, gauge_type=gauge_type)
         _check_scalar_contract(instance)
         if any(existing.name == instance.name for existing in species_list):
             raise ValueError(

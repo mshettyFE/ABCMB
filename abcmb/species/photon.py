@@ -31,8 +31,8 @@ class Photon(StandardFluid):
     name = "Photon"
     is_matter = False
 
-    def __init__(self, first_idx, options):
-        super().__init__(first_idx, options)
+    def __init__(self, first_idx, options, **kwargs):
+        super().__init__(first_idx, options, **kwargs)
         self.num_F_ell_modes = options["l_max_g"] + 1
         self.num_G_ell_modes = options["l_max_pol_g"] + 1
         self.num_equations = self.num_F_ell_modes + self.num_G_ell_modes

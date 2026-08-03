@@ -20,8 +20,8 @@ class MasslessNeutrino(StandardFluid):
     is_matter = False
     is_neutrino = True
 
-    def __init__(self, first_idx, options):
-        super().__init__(first_idx, options)
+    def __init__(self, first_idx, options, **kwargs):
+        super().__init__(first_idx, options, **kwargs)
         self.num_equations = options["l_max_massless_nu"] + 1
 
     def rho(self, lna: ArrayLike, args: FluidParams) -> Array | float:

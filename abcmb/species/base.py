@@ -3,6 +3,7 @@ Fluid base classes and the fluid-interface type aliases.
 """
 
 from collections.abc import Mapping
+from enum import Enum, auto
 from typing import TYPE_CHECKING, ClassVar, TypeVar, cast
 
 import equinox as eqx
@@ -24,6 +25,11 @@ config.update("jax_enable_x64", True)
 FluidParams = Mapping[str, Array]
 
 _F = TypeVar("_F", bound="Fluid")
+
+
+class GaugeType(Enum):
+    SYNCHRONOUS = auto()
+    CONFORMAL = auto()
 
 
 class PerturbationContext(eqx.Module):
@@ -69,8 +75,9 @@ class Fluid(eqx.Module):
     first_idx: int = eqx.field(static=True)
     # Number of equations to be evolved in the perturbations module
     num_equations: int = eqx.field(static=True)
+    gauge_type: GaugeType = eqx.field(static=True, default=GaugeType.SYNCHRONOUS)
 
-    def __init__(self, first_idx, options):
+    def __init__(self, first_idx, options, gauge_type=GaugeType.SYNCHRONOUS):
         self.first_idx = first_idx
 
     def rho(self, lna: ArrayLike, args: FluidParams) -> Array:
@@ -234,9 +241,6 @@ class StandardFluid(Fluid):
 
     """
 
-    def __init__(self, first_idx, options):
-        super().__init__(first_idx, options)
-
     def get_delta(self, lna: ArrayLike, y: Array, args: PerturbationContext) -> Array:
         """
         Getter method for density perturbation from perturbation equations vector
@@ -322,9 +326,6 @@ class BackgroundFluid(Fluid):
     # which is hard-wired to zero below -- a "matter" fluid with no density
     # perturbation would be incoherent. Subclasses need only declare `name`.
     is_matter = False
-
-    def __init__(self, first_idx, options):
-        super().__init__(first_idx, options)
 
     def y_ini(self, k: ArrayLike, tau_ini: ArrayLike, args: FluidParams) -> Array:
         """

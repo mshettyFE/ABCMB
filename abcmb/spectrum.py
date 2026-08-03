@@ -15,14 +15,18 @@ file_dir = os.path.dirname(__file__)
 
 config.update("jax_enable_x64", True)
 
-# 2D arrays of tabulated spherical functions over l and x axes.
-bessel_l_tab = jnp.array(np.loadtxt(file_dir + "/bessel_tab/l.txt"), dtype="int")
-xphi0_tab = jnp.array(np.loadtxt(file_dir + "/bessel_tab/xphi0.txt"))
-phi0_tab = jnp.array(np.loadtxt(file_dir + "/bessel_tab/phi0.txt"))
-xphi1_tab = jnp.array(np.loadtxt(file_dir + "/bessel_tab/xphi1.txt"))
-phi1_tab = jnp.array(np.loadtxt(file_dir + "/bessel_tab/phi1.txt"))
-xphi2_tab = jnp.array(np.loadtxt(file_dir + "/bessel_tab/xphi2.txt"))
-phi2_tab = jnp.array(np.loadtxt(file_dir + "/bessel_tab/phi2.txt"))
+# Tabulated spherical-Bessel kernels over (x, l): phi0 = j_l, phi1 = j_l',
+# phi2 = (3 j_l'' + j_l)/2 -- the three line-of-sight source kernels. Each has
+# its own x grid because each is tabulated over its own function's support.
+# Regenerate with abcmb/_generators/bessel_tables.py (scipy-based, offline).
+_bessel_tables = np.load(file_dir + "/data/bessel_tables.npz")
+bessel_l_tab = jnp.array(_bessel_tables["l"], dtype="int")
+xphi0_tab = jnp.array(_bessel_tables["xphi0"])
+phi0_tab = jnp.array(_bessel_tables["phi0"])
+xphi1_tab = jnp.array(_bessel_tables["xphi1"])
+phi1_tab = jnp.array(_bessel_tables["phi1"])
+xphi2_tab = jnp.array(_bessel_tables["xphi2"])
+phi2_tab = jnp.array(_bessel_tables["phi2"])
 
 # Commit the tables to the default device (the accelerator when there is one,
 # otherwise a no-op)
