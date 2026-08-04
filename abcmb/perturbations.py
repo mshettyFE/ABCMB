@@ -461,13 +461,42 @@ class PerturbationEvolver(eqx.Module):
             lna,
             delta_m,
             theta_b_prime,
-            metric_eta,
-            metric_h_prime,
-            metric_eta_prime,
-            metric_alpha,
-            metric_alpha_prime,
+            SynchronousMetric(
+                eta=metric_eta,
+                h_prime=metric_h_prime,
+                eta_prime=metric_eta_prime,
+                alpha=metric_alpha,
+                alpha_prime=metric_alpha_prime,
+            ),
             species_perturbations,
         )
+
+
+class SynchronousMetric(eqx.Module):
+    """
+     The synchronous-gauge metric history on the output ``(lna, k)`` grid.
+
+    Attributes:
+     -----------
+     eta : array
+         Metric perturbation η
+     h_prime : array
+         Time derivative of metric h (d/dlna). Retained for inspection; no
+         internal consumer reads it.
+     eta_prime : array
+         Time derivative of metric η (d/dlna)
+     alpha : array
+         Derived metric perturbation α = aH (h' + 6 eta') / 2k^2
+     alpha_prime : array
+         Time derivative of α, from the anisotropic-stress Einstein equation
+         (not by differentiating the energy constraint -- that would need h'')
+    """
+
+    eta: Float[Array, "n_lna n_k"]
+    h_prime: Float[Array, "n_lna n_k"]
+    eta_prime: Float[Array, "n_lna n_k"]
+    alpha: Float[Array, "n_lna n_k"]
+    alpha_prime: Float[Array, "n_lna n_k"]
 
 
 class PerturbationTable(eqx.Module):
@@ -488,16 +517,8 @@ class PerturbationTable(eqx.Module):
         Total matter density perturbation, weighted sum over all matter species
     theta_b_prime : array
         Baryon velocity derivative (backward-calculated from Boltzmann equations)
-    metric_eta : array
-        Metric perturbation η
-    metric_h_prime : array
-        Time derivative of metric h
-    metric_eta_prime : array
-        Time derivative of metric η
-    metric_alpha : array
-        Derived metric perturbation α
-    metric_alpha_prime : array
-        Time derivative of metric α
+    metric : SynchronousMetric
+        The gauge's metric history (η, h', η', α, α') on the same grid.
     species_perturbations : dict
         Named perturbation arrays for each species, keyed by species name.
         Each value is a dict {quantity: array(Nlna, Nk)}.
@@ -509,10 +530,6 @@ class PerturbationTable(eqx.Module):
     delta_m: Float[Array, "n_lna n_k"]
     theta_b_prime: Float[Array, "n_lna n_k"]
 
-    metric_eta: Float[Array, "n_lna n_k"]
-    metric_h_prime: Float[Array, "n_lna n_k"]
-    metric_eta_prime: Float[Array, "n_lna n_k"]
-    metric_alpha: Float[Array, "n_lna n_k"]
-    metric_alpha_prime: Float[Array, "n_lna n_k"]
+    metric: SynchronousMetric
 
     species_perturbations: dict[str, dict[str, Float[Array, "n_lna n_k"]]]

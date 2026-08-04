@@ -735,13 +735,13 @@ class SpectrumSolver(eqx.Module):
         sigma_g = vmap(interp_column, in_axes=0, out_axes=0)(photon_sp["sigma"][:-1, :])
         Gg0 = vmap(interp_column, in_axes=0, out_axes=0)(photon_sp["G0"][:-1, :])
         Gg2 = vmap(interp_column, in_axes=0, out_axes=0)(photon_sp["G2"][:-1, :])
-        eta = vmap(interp_column, in_axes=0, out_axes=0)(PT.metric_eta[:-1, :])
+        eta = vmap(interp_column, in_axes=0, out_axes=0)(PT.metric.eta[:-1, :])
         eta_prime = vmap(interp_column, in_axes=0, out_axes=0)(
-            PT.metric_eta_prime[:-1, :]
+            PT.metric.eta_prime[:-1, :]
         )
-        alpha = vmap(interp_column, in_axes=0, out_axes=0)(PT.metric_alpha[:-1, :])
+        alpha = vmap(interp_column, in_axes=0, out_axes=0)(PT.metric.alpha[:-1, :])
         alpha_prime = vmap(interp_column, in_axes=0, out_axes=0)(
-            PT.metric_alpha_prime[:-1, :]
+            PT.metric.alpha_prime[:-1, :]
         )
 
         # Source terms
