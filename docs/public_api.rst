@@ -67,7 +67,10 @@ fluid subclasses one of the three exported base classes and provides:
 * ``rho`` and ``P`` (scalar in, scalar out — batching is the caller's
   ``vmap``);
 * ``y_ini`` and ``y_prime`` for perturbed species, returning arrays of length
-  ``num_equations``;
+  ``num_equations``. ``y_prime`` takes the metric contribution as a
+  :class:`~abcmb.species.MetricSources` bundle
+  (``sources.continuity`` / ``.euler`` / ``.shear``), which is what lets one
+  implementation serve every gauge — see :doc:`promoting_a_fluid`;
 * optionally ``output_perturbations``.
 
 Inside those methods, ``self.first_idx`` and the ``args``

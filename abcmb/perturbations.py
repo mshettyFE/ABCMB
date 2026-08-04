@@ -18,7 +18,14 @@ from jaxtyping import Array, Float
 
 from . import constants as cnst
 from .inputs.schema import KBatchStrategy
-from .species import Baryon, Fluid, PerturbationContext, StandardFluid, find_species
+from .species import (
+    Baryon,
+    Fluid,
+    MetricSources,
+    PerturbationContext,
+    StandardFluid,
+    find_species,
+)
 
 if TYPE_CHECKING:
     from .background import Background
@@ -79,6 +86,24 @@ def _einstein_constraints(
     )
     metric_eta_prime = grav / aH / k**2 * sum_rho_plus_P_theta / cnst.c_Mpc_over_s**2
     return metric_h_prime, metric_eta_prime
+
+
+def _synchronous_metric_sources(
+    metric_h_prime: ArrayLike, metric_eta_prime: ArrayLike
+) -> MetricSources:
+    """
+    The synchronous-gauge metric source terms the fluid equations see.
+
+    ``euler`` is identically zero here: in synchronous gauge no Euler equation
+    carries a metric source, which is why ``Baryon.theta_prime`` does not even
+    take one. It is materialized as an array rather than a Python ``0.0`` so
+    every field of the returned pytree is a traced leaf.
+    """
+    return MetricSources(
+        continuity=metric_h_prime / 2.0,
+        euler=jnp.zeros_like(metric_h_prime),
+        shear=(metric_h_prime + 6.0 * metric_eta_prime) / 2.0,
+    )
 
 
 class PerturbationEvolver(eqx.Module):
@@ -255,12 +280,13 @@ class PerturbationEvolver(eqx.Module):
         metric_h_prime, metric_eta_prime = _einstein_constraints(
             k, a, aH, metric_eta, sum_rho_delta, sum_rho_plus_P_theta
         )
+        sources = _synchronous_metric_sources(metric_h_prime, metric_eta_prime)
 
         # Now loop over all species and assemble their respective y_primes
         y_prime = jnp.array([metric_eta_prime])
         for i in range(len(self.species_list)):
             species = self.species_list[i]
-            piece = species.y_prime(k, lna, metric_h_prime, metric_eta_prime, y, ctx)
+            piece = species.y_prime(k, lna, sources, y, ctx)
             # Same static layout check as in initial_conditions_one_k.
             # OK since error on static data. Gets shaken out upon tracing
             if piece.shape != (species.num_equations,):

@@ -32,6 +32,20 @@ class GaugeType(Enum):
     CONFORMAL = auto()
 
 
+class MetricSources(eqx.Module):
+    """
+    The metric's contribution to a fluid's equations, in the three slots it can
+    occupy. Written once by the evolver, read by every ``y_prime``.
+
+    Deliberately carries no gauge tag: a fluid must not be able to ask which
+    gauge it is in, since that is exactly what this abstraction buys.
+    """
+
+    continuity: Array
+    euler: Array
+    shear: Array
+
+
 class PerturbationContext(eqx.Module):
     """
     Everything a fluid's ``y_prime`` may need beyond its own state: the
@@ -133,13 +147,18 @@ class Fluid(eqx.Module):
         self,
         k: ArrayLike,  # wavenumber
         lna: ArrayLike,
-        metric_h_prime: ArrayLike,  # Derivative of metric h
-        metric_eta_prime: ArrayLike,  # Derivative of metric eta
+        sources: MetricSources,  # metric contribution, in its three slots
         y: Array,
         args: PerturbationContext,
     ) -> Array:
         """
         Compute time derivatives of perturbation modes.
+
+        Write the equations against ``sources.continuity`` / ``sources.euler`` /
+        ``sources.shear`` rather than against the metric variables of a
+        particular gauge -- see :class:`MetricSources` for the substitution
+        table. A fluid written that way is correct in every gauge ABCMB
+        supports, with no branching.
 
         Returns:
            Time derivatives of perturbation modes
@@ -337,8 +356,7 @@ class BackgroundFluid(Fluid):
         self,
         k: ArrayLike,
         lna: ArrayLike,
-        metric_h_prime: ArrayLike,
-        metric_eta_prime: ArrayLike,
+        sources: MetricSources,
         y: Array,
         args: PerturbationContext,
     ) -> Array:

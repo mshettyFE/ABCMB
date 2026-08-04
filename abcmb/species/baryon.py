@@ -12,7 +12,13 @@ from jaxtyping import Array, Float
 
 from .. import constants as cnst
 from . import adiabatic_ics
-from .base import FluidParams, OutputArgs, PerturbationContext, StandardFluid
+from .base import (
+    FluidParams,
+    MetricSources,
+    OutputArgs,
+    PerturbationContext,
+    StandardFluid,
+)
 
 if TYPE_CHECKING:
     from ..background import Background
@@ -128,8 +134,7 @@ class Baryon(StandardFluid):
         self,
         k: ArrayLike,
         lna: ArrayLike,
-        metric_h_prime: ArrayLike,
-        metric_eta_prime: ArrayLike,
+        sources: MetricSources,
         y: Array,
         args: PerturbationContext,
     ) -> Array:
@@ -156,7 +161,7 @@ class Baryon(StandardFluid):
         delta = y[self.first_idx]
         theta = y[self.first_idx + 1]
         theta_g = photon.get_theta(lna, y, args)
-        delta_prime = -theta / aH - metric_h_prime / 2.0
+        delta_prime = -(theta / aH + sources.continuity)
         theta_prime = self.theta_prime(k, delta, theta, theta_g, aH, cs2, R, tau_c)
 
         return jnp.array([delta_prime, theta_prime])

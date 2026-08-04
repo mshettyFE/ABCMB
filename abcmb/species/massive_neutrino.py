@@ -10,7 +10,13 @@ from jaxtyping import Array, Float
 
 from .. import constants as cnst
 from . import adiabatic_ics
-from .base import Fluid, FluidParams, OutputArgs, PerturbationContext
+from .base import (
+    Fluid,
+    FluidParams,
+    MetricSources,
+    OutputArgs,
+    PerturbationContext,
+)
 
 # CAMB's tuned momentum stencils (massive_neutrinos.f90), the default rules:
 # nodes q_i and kernel weights w_i satisfying, with f0(q) = 1/(e^q + 1),
@@ -178,8 +184,7 @@ class MassiveNeutrino(Fluid):
         self,
         k: ArrayLike,
         lna: ArrayLike,
-        metric_h_prime: ArrayLike,
-        metric_eta_prime: ArrayLike,
+        sources: MetricSources,
         y: Array,
         args: PerturbationContext,
     ) -> Array:
@@ -218,11 +223,16 @@ class MassiveNeutrino(Fluid):
             )
             Psi = y[L]
 
-            Psi0_prime = -q / epsilon / aH * Psi[1] + metric_h_prime / 6.0 * dlnf0_dlnq
+            # The metric enters the monopole and quadrupole only: the l=0 slot
+            # takes continuity/3 (= h'/6 in synchronous) and the l=2 slot takes
+            # 2/15 * shear, both scaled by dlnf0/dlnq per MB95 Eq. (56).
+            Psi0_prime = (
+                -q / epsilon / aH * Psi[1] + sources.continuity / 3.0 * dlnf0_dlnq
+            )
             kPsi1_prime = q * k**2 / 3.0 / epsilon / aH * (Psi[0] - 2.0 * Psi[2])
             Psi2_prime = (
                 q * k / 5.0 / epsilon / aH * (2.0 * Psi[1] / k - 3.0 * Psi[3])
-                - (metric_h_prime / 15.0 + 2.0 * metric_eta_prime / 5.0) * dlnf0_dlnq
+                - 2.0 / 15.0 * sources.shear * dlnf0_dlnq
             )
 
             # Intermediate hierarchy, 3<=L<lmax

@@ -8,7 +8,13 @@ from jaxtyping import Array, Float
 
 from .. import constants as cnst
 from . import adiabatic_ics
-from .base import FluidParams, OutputArgs, PerturbationContext, StandardFluid
+from .base import (
+    FluidParams,
+    MetricSources,
+    OutputArgs,
+    PerturbationContext,
+    StandardFluid,
+)
 
 
 class MasslessNeutrino(StandardFluid):
@@ -82,8 +88,7 @@ class MasslessNeutrino(StandardFluid):
         self,
         k: ArrayLike,
         lna: ArrayLike,
-        metric_h_prime: ArrayLike,
-        metric_eta_prime: ArrayLike,
+        sources: MetricSources,
         y: Array,
         args: PerturbationContext,
     ) -> Array:
@@ -107,13 +112,10 @@ class MasslessNeutrino(StandardFluid):
         sigma = F[2]
 
         # density, velocity, shear perturbations
-        delta_prime = -4.0 / 3.0 / aH * theta - 2.0 / 3.0 * metric_h_prime
+        delta_prime = -4.0 / 3.0 * (theta / aH + sources.continuity)
         theta_prime = k**2 / aH * (delta / 4.0 - sigma)
         sigma_prime = (
-            4.0 / 15.0 / aH * theta
-            - 3.0 / 10.0 * k / aH * F[3]
-            + 2.0 / 15.0 * metric_h_prime
-            + 4.0 / 5.0 * metric_eta_prime
+            4.0 / 15.0 * (theta / aH + sources.shear) - 3.0 / 10.0 * k / aH * F[3]
         )
         F3_prime = 1.0 / 7.0 * k / aH * (6.0 * sigma - 4.0 * F[4])
 

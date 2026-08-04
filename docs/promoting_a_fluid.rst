@@ -47,6 +47,34 @@ rather than subtly:
   ``__init__`` (``BackgroundFluid`` already declares 0). It must match the
   size of your ``y_ini``/``y_prime`` arrays; ABCMB cross-checks this at
   compile time.
+* ``y_prime`` receives the metric's contribution as a
+  :class:`~abcmb.species.MetricSources` bundle rather than as raw metric
+  variables. Write the equations against its three slots and the fluid is
+  correct in every gauge ABCMB supports, with no branching:
+
+  .. list-table::
+     :header-rows: 1
+     :widths: 40 30
+
+     * - Your derivation has
+       - Write
+     * - :math:`h'/2` (synchronous) or :math:`-3\phi'` (Newtonian)
+       - ``sources.continuity``
+     * - :math:`0` (synchronous) or :math:`k^2\psi` (Newtonian)
+       - ``sources.euler``
+     * - :math:`(h' + 6\eta')/2` (synchronous) or :math:`0` (Newtonian)
+       - ``sources.shear``
+
+  Both textbook forms collapse to the same line — this is the skeleton the two
+  derivations already share, not a new formalism::
+
+      # newtonian paper:   delta' = -(1+w)(theta - 3 phi') - 3H(cs2-w) delta
+      # synchronous paper: delta' = -(1+w)(theta + h'/2)   - 3H(cs2-w) delta
+      delta_prime = -(1 + w) * (theta / aH + sources.continuity) - 3 * (cs2 - w) * delta
+
+  Note each gauge zeroes one slot (``euler`` in synchronous, ``shear`` in
+  Newtonian), so a fluid exercised in only one gauge cannot catch an omitted
+  term. Do not infer from "it works" that every slot is placed correctly.
 * Set ``is_neutrino = True`` only if the species belongs in the neutrino
   sector for the :math:`N_{\mathrm{eff}}` / :math:`R_\nu` accounting
   (free-streaming, neutrino-like radiation). The default ``False`` is correct

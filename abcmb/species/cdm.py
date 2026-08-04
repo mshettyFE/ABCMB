@@ -10,7 +10,13 @@ from jaxtyping import Array, Float
 
 from .. import constants as cnst
 from . import adiabatic_ics
-from .base import FluidParams, OutputArgs, PerturbationContext, StandardFluid
+from .base import (
+    FluidParams,
+    MetricSources,
+    OutputArgs,
+    PerturbationContext,
+    StandardFluid,
+)
 
 
 class ColdDarkMatter(StandardFluid):
@@ -65,18 +71,22 @@ class ColdDarkMatter(StandardFluid):
         self,
         k: ArrayLike,
         lna: ArrayLike,
-        metric_h_prime: ArrayLike,  # Derivative of h metric
-        metric_eta_prime: ArrayLike,  # Derivative of eta metric
+        sources: MetricSources,
         y: Array,
         args: PerturbationContext,
     ) -> Array:
         """
         Compute time derivatives of cold dark matter perturbations.
         Eq. 42 in Ma and Bertschinger (1995).
+
+        CDM has no Euler equation here: synchronous gauge is *defined* by the
+        CDM frame (theta_c = 0), so only the density survives. That is a
+        property of the gauge, not of CDM.
+
         Returns:
             Time derivative of density perturbation (units: dimensionless)
         """
-        return jnp.array([-0.5 * metric_h_prime])
+        return jnp.array([-sources.continuity])
 
     def output_perturbations(
         self,
