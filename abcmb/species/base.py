@@ -3,7 +3,6 @@ Fluid base classes and the fluid-interface type aliases.
 """
 
 from collections.abc import Mapping
-from enum import Enum, auto
 from typing import TYPE_CHECKING, ClassVar, TypeVar, cast
 
 import equinox as eqx
@@ -25,11 +24,6 @@ config.update("jax_enable_x64", True)
 FluidParams = Mapping[str, Array]
 
 _F = TypeVar("_F", bound="Fluid")
-
-
-class GaugeType(Enum):
-    SYNCHRONOUS = auto()
-    CONFORMAL = auto()
 
 
 class MetricSources(eqx.Module):
@@ -89,9 +83,8 @@ class Fluid(eqx.Module):
     first_idx: int = eqx.field(static=True)
     # Number of equations to be evolved in the perturbations module
     num_equations: int = eqx.field(static=True)
-    gauge_type: GaugeType = eqx.field(static=True, default=GaugeType.SYNCHRONOUS)
 
-    def __init__(self, first_idx, options, gauge_type=GaugeType.SYNCHRONOUS):
+    def __init__(self, first_idx, options):
         self.first_idx = first_idx
 
     def rho(self, lna: ArrayLike, args: FluidParams) -> Array:
@@ -136,6 +129,16 @@ class Fluid(eqx.Module):
     def y_ini(self, k: ArrayLike, tau_ini: ArrayLike, args: FluidParams) -> Array:
         """
         Calculates the initial state of perturbation modes at early cosmological times.
+
+        Two conventions are implicit in this signature, so they are stated here:
+
+        * **The adiabatic mode.** Returning a single state leaves no room for the
+          isocurvature modes, so "adiabatic" is what this method means. Supporting
+          the others would need the mode as an argument.
+        * **Synchronous-gauge variables.** The shared series in
+          :mod:`.adiabatic_ics` are normalized to ``eta = 1`` superhorizon, which
+          is the synchronous metric perturbation.
+
         Returns:
            Initial perturbation mode values
         """

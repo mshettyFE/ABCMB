@@ -49,8 +49,11 @@ rather than subtly:
   compile time.
 * ``y_prime`` receives the metric's contribution as a
   :class:`~abcmb.species.MetricSources` bundle rather than as raw metric
-  variables. Write the equations against its three slots and the fluid is
-  correct in every gauge ABCMB supports, with no branching:
+  variables. This is a **transcription table**: whichever gauge your derivation
+  is written in, map its metric terms onto the three slots and ABCMB evaluates
+  them correctly. (ABCMB integrates in synchronous gauge; you do not need to
+  convert your equations by hand, and you must not — the slots already carry
+  the right values.)
 
   .. list-table::
      :header-rows: 1
@@ -72,9 +75,17 @@ rather than subtly:
       # synchronous paper: delta' = -(1+w)(theta + h'/2)   - 3H(cs2-w) delta
       delta_prime = -(1 + w) * (theta / aH + sources.continuity) - 3 * (cs2 - w) * delta
 
-  Note each gauge zeroes one slot (``euler`` in synchronous, ``shear`` in
-  Newtonian), so a fluid exercised in only one gauge cannot catch an omitted
-  term. Do not infer from "it works" that every slot is placed correctly.
+  Because ABCMB integrates in synchronous gauge, ``sources.euler`` is
+  identically zero — no Euler equation carries a metric source there. Write it
+  anyway if your derivation has one: it costs nothing, it documents where the
+  term belongs, and it is what makes the transcription faithful to your source.
+
+  Initial conditions are *not* covered by this. ``y_ini`` must currently be
+  written in synchronous-gauge variables (the shared series in
+  :mod:`~abcmb.species.adiabatic_ics` are normalized to :math:`\eta = 1`
+  superhorizon). Unlike the equations, that conversion cannot be done at the
+  species level — it depends on the total stress-energy — so a fluid whose ICs
+  were derived in another gauge needs care here.
 * Set ``is_neutrino = True`` only if the species belongs in the neutrino
   sector for the :math:`N_{\mathrm{eff}}` / :math:`R_\nu` accounting
   (free-streaming, neutrino-like radiation). The default ``False`` is correct

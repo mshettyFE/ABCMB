@@ -8,12 +8,12 @@ a re-export here. The public surface of the former single-module
 ``abcmb.species`` is preserved.
 """
 
+from . import adiabatic_ics
 from .baryon import Baryon
 from .base import (
     BackgroundFluid,
     Fluid,
     FluidParams,
-    GaugeType,
     MetricSources,
     OutputArgs,
     PerturbationContext,
@@ -32,6 +32,7 @@ from .validation import (
 )
 
 __all__ = [
+    "adiabatic_ics",
     "BackgroundFluid",
     "Baryon",
     "ColdDarkMatter",
@@ -45,7 +46,6 @@ __all__ = [
     "Photon",
     "StandardFluid",
     "PerturbationContext",
-    "GaugeType",
     "find_species",
     "continuity_residuals",
     "adiabatic_ic_residuals",

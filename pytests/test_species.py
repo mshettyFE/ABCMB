@@ -97,16 +97,6 @@ def test_user_species_instance_raises():
         model_setup.populate_species((instance,), _options())
 
 
-def test_uniform_gauge():
-    # Defaults to synchronous gauge
-    # Run on LCDM model
-    from abcmb import model_setup, species
-
-    species_list = model_setup.populate_species(None, _options())
-    gauges = [s.gauge_type for s in species_list]
-    assert all([g == species.GaugeType.SYNCHRONOUS for g in gauges])
-
-
 def test_scalar_contract_probe_rejects_array_rho(lcdm_model):
     # Construction-time probe (jax.eval_shape, no numerics): a fluid whose
     # rho returns an array for scalar lna would break species stacks and
