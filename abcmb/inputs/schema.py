@@ -125,6 +125,18 @@ OPTION_SCHEMA = (
         group=Group.SPECIES,
     ),
     Spec(
+        "gauge",
+        "synchronous",
+        str,
+        "Gauge the perturbations are integrated in: 'synchronous' or "
+        "'newtonian'. The per-species delta/theta in the PerturbationTable "
+        "are not the same between the two. Note the *_PE solver tolerances "
+        "are tuned for synchronous gauge and are not converged in newtonian "
+        "gauge -- Model warns and names the values to use.",
+        group=Group.SPECIES,
+        choices=("synchronous", "newtonian"),
+    ),
+    Spec(
         "input_tau_reion",
         True,
         bool,

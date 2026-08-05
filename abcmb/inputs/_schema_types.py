@@ -9,6 +9,7 @@ class Options(TypedDict):
     """Resolved model options (static config); keys mirror OPTION_SCHEMA."""
 
     use_LCDM_species: bool
+    gauge: str
     input_tau_reion: bool
     l_min: int
     l_max: int

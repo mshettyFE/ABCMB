@@ -40,6 +40,7 @@ m_nu_massive = 0.06     # (param, float) Massive-neutrino mass, in eV.
 
 [species]
 use_LCDM_species = true  # (option, bool) Include the default LCDM species set.
+gauge = "synchronous"    # (option, str) Gauge the perturbations are integrated in: 'synchronous' or 'newtonian'. The per-species delta/theta in the PerturbationTable are not the same between the two. Note the *_PE solver tolerances are tuned for synchronous gauge and are not converged in newtonian gauge -- Model warns and names the values to use.
 
 [input]
 input_tau_reion = true  # (option, bool) Reionization input mode: tau_reion (True) vs z_reion (False).
