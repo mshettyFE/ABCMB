@@ -305,21 +305,12 @@ class SpectrumSolver(eqx.Module):
             in_axes=1,  # loop over columns
         )
 
-        delta_dm_lna = interp_over_lna(
-            PT.species_perturbations["ColdDarkMatter"]["delta"]
-        )
-        delta_b_lna = interp_over_lna(PT.species_perturbations["Baryon"]["delta"])
+        delta_cb_lna = interp_over_lna(PT.delta_cb)
 
         # now interpolate over k
-        delta_dm = jnp.interp(k, PT.k, delta_dm_lna)
-        delta_b = jnp.interp(k, PT.k, delta_b_lna)
+        delta_cb = jnp.interp(k, PT.k, delta_cb_lna)
 
-        # total matter overdensity
-        delta_m = (
-            params["omega_b"] * delta_b + params["omega_cdm"] * delta_dm
-        ) / params["omega_m"]
-
-        return delta_m**2 * self.primordial_spectrum(k, params)
+        return delta_cb**2 * self.primordial_spectrum(k, params)
 
     def lensing_power_spectrum(self, k, lna, PT, BG, params):
         """
@@ -735,40 +726,31 @@ class SpectrumSolver(eqx.Module):
         sigma_g = vmap(interp_column, in_axes=0, out_axes=0)(photon_sp["sigma"][:-1, :])
         Gg0 = vmap(interp_column, in_axes=0, out_axes=0)(photon_sp["G0"][:-1, :])
         Gg2 = vmap(interp_column, in_axes=0, out_axes=0)(photon_sp["G2"][:-1, :])
-        eta = vmap(interp_column, in_axes=0, out_axes=0)(PT.metric.eta[:-1, :])
-        eta_prime = vmap(interp_column, in_axes=0, out_axes=0)(
-            PT.metric.eta_prime[:-1, :]
+        # The metric history is interpolated leaf-wise, so this stays correct
+        # for whichever gauge's metric struct the table carries; the metric
+        # then turns its own fields into source terms.
+        metric = jax.tree.map(
+            lambda arr: vmap(interp_column, in_axes=0, out_axes=0)(arr[:-1, :]),
+            PT.metric,
         )
-        alpha = vmap(interp_column, in_axes=0, out_axes=0)(PT.metric.alpha[:-1, :])
-        alpha_prime = vmap(interp_column, in_axes=0, out_axes=0)(
-            PT.metric.alpha_prime[:-1, :]
-        )
+        metric_src = metric.cmb_sources(k_axis, aH, aH_dot, g, g_prime, expmkappa)
 
-        # Source terms
+        # Source terms. Identical in both gauges: what differs is entirely
+        # inside metric_src (see gauges.CMBMetricSources).
         sourceT0 = (
-            self.scale_sw * g * (delta_g / 4.0 + aH * alpha_prime)
-            + self.scale_isw
-            * (
-                g * (eta - aH * alpha_prime - 2.0 * aH * alpha)
-                + 2.0
-                * expmkappa
-                * (aH * eta_prime - aH_dot * alpha - aH**2 * alpha_prime)
-            )
+            self.scale_sw * g * (delta_g / 4.0 + metric_src.sw_potential)
+            + self.scale_isw * metric_src.isw_T0
             + self.scale_dop
             * (
                 aH
                 * (
-                    g * ((theta_b_prime / k_axis**2) + alpha_prime)
-                    + g_prime * ((theta_b / k_axis**2) + alpha)
+                    g * (theta_b_prime / k_axis**2 + metric_src.theta_offset_prime)
+                    + g_prime * (theta_b / k_axis**2 + metric_src.theta_offset)
                 )
             )
         )
 
-        sourceT1 = (
-            self.scale_isw
-            * expmkappa
-            * ((aH * alpha_prime + 2.0 * aH * alpha - eta) * k_axis)
-        )
+        sourceT1 = self.scale_isw * metric_src.isw_T1
 
         sourceT2 = self.scale_pol * g * (2 * sigma_g + Gg0 + Gg2) / 8.0
 
