@@ -16,12 +16,11 @@ from jax import lax, vmap
 from jax.typing import ArrayLike
 from jaxtyping import Array, Float
 
-from . import constants as cnst
+from .gauges import AllSpeciesTotals, Gauge, MetricHistory, SynchronousGauge
 from .inputs.schema import KBatchStrategy
 from .species import (
     Baryon,
     Fluid,
-    MetricSources,
     PerturbationContext,
     StandardFluid,
     find_species,
@@ -67,51 +66,67 @@ def _k_batch_strategy(value: str) -> KBatchStrategy:
         ) from None
 
 
-def _einstein_constraints(
-    k: ArrayLike,
-    a: ArrayLike,
-    aH: ArrayLike,
-    metric_eta: ArrayLike,
-    sum_rho_delta: ArrayLike,
-    sum_rho_plus_P_theta: ArrayLike,
-) -> tuple[Array, Array]:
+class _MatterSubtotals:
     """
-    The synchronous-gauge Einstein constraints closing the fluid system:
-    ``h'`` from the energy constraint and ``eta'`` from the momentum
-    constraint, given the summed fluid sources.
-    """
-    grav = 4.0 * jnp.pi * cnst.G * a**2
-    metric_h_prime = (
-        2.0 / aH**2 * (k**2 * metric_eta + grav / cnst.c_Mpc_over_s**2 * sum_rho_delta)
-    )
-    metric_eta_prime = grav / aH / k**2 * sum_rho_plus_P_theta / cnst.c_Mpc_over_s**2
-    return metric_h_prime, metric_eta_prime
+    Running density/velocity sums over a *subset* of the matter species, and
+    the comoving-gauge density contrast they define -- the counterpart to
+    :class:`~abcmb.gauges.AllSpeciesTotals`, which sums every species instead.
 
+    The two carry different fields because they answer different questions.
+    The Einstein constraints use absolute sums, so ``AllSpeciesTotals`` needs
+    the shear and never the unperturbed densities; ``delta_m`` is the *ratio*
+    ``sum(rho delta) / sum(rho)``, so this needs the denominators and has no
+    use for shear.
 
-def _synchronous_metric_sources(
-    metric_h_prime: ArrayLike, metric_eta_prime: ArrayLike
-) -> MetricSources:
+    A plain mutable accumulator, not a pytree: it lives and dies inside
+    ``make_output_table`` and must not escape.
     """
-    The synchronous-gauge metric source terms the fluid equations see.
 
-    ``euler`` is identically zero here: in synchronous gauge no Euler equation
-    carries a metric source, which is why ``Baryon.theta_prime`` does not even
-    take one. It is materialized as an array rather than a Python ``0.0`` so
-    every field of the returned pytree is a traced leaf.
-    """
-    return MetricSources(
-        continuity=metric_h_prime / 2.0,
-        euler=jnp.zeros_like(metric_h_prime),
-        shear=(metric_h_prime + 6.0 * metric_eta_prime) / 2.0,
-    )
+    def __init__(self, modes: Float[Array, "n_y n_lna n_k"]):
+        self.rho_delta = jnp.zeros_like(modes[0])
+        self.rho_plus_P_theta = jnp.zeros_like(modes[0])
+        self.rho = 0.0
+        self.rho_plus_P = 0.0
+
+    def add(
+        self,
+        rho_delta: Array,
+        rho_plus_P_theta: Array,
+        rho: Array,
+        rho_plus_P: Array,
+    ) -> None:
+        self.rho_delta += rho_delta
+        self.rho_plus_P_theta += rho_plus_P_theta
+        self.rho += rho
+        self.rho_plus_P += rho_plus_P
+
+    def comoving_delta(self, karr: Array, aH: Array) -> Float[Array, "n_lna n_k"]:
+        """
+        ``delta + 3 aH theta / k^2`` -- the comoving-gauge density contrast,
+        which is what CLASS reports for its matter transfer functions by
+        default (``perturbations.c``, ``has_matter_source_in_current_gauge``
+        false).
+
+        Both terms are evaluated in whichever gauge the solve ran in, and the
+        sum is nonetheless gauge independent: under the shift the density
+        loses ``3 aH alpha`` (pressureless matter) and the velocity gains
+        ``k^2 alpha``, and the two cancel exactly. So there is deliberately no
+        gauge correction applied here -- adding one would double count.
+        """
+        return (
+            self.rho_delta / self.rho[:, None]
+            + 3.0 * aH * self.rho_plus_P_theta / self.rho_plus_P[:, None] / karr**2
+        )
 
 
 class PerturbationEvolver(eqx.Module):
     """
     Linear scalar perturbation evolution solver.
 
-    Evolves perturbations for all fluid species using Einstein-Boltzmann
-    equations in synchronous gauge.
+    Evolves perturbations for all fluid species using the Einstein-Boltzmann
+    equations, in the gauge given by ``gauge`` (see :mod:`abcmb.gauges`). The
+    gauge owns slot 0 of the state vector and the three metric source slots;
+    everything else here is gauge-agnostic.
 
     """
 
@@ -124,6 +139,7 @@ class PerturbationEvolver(eqx.Module):
     # log grid would quietly undersample them at high k.
     k_axis_perturbations: Float[Array, " n_k"]
     options: "Options" = eqx.field(default_factory=dict)
+    gauge: Gauge = eqx.field(default_factory=SynchronousGauge, static=True)
     adjoint: type[diffrax.AbstractAdjoint] = eqx.field(
         default=diffrax.ForwardMode, static=True
     )
@@ -210,6 +226,13 @@ class PerturbationEvolver(eqx.Module):
         ------
         Uses CLASS-style initial conditions with metric perturbations h and η.
         Assumes adiabatic initial conditions with vanishing isocurvature modes.
+
+        Follows CLASS's ordering (``perturbations_initial_conditions``): the
+        adiabatic series are anchored in synchronous gauge, the generator α is
+        read off the resulting total stress-energy, and everything that needs
+        it is then transformed. Each fluid declares the gauge its own ``y_ini``
+        is written in (:attr:`~.species.Fluid.ic_gauge`) and is shifted only if
+        that disagrees with the gauge being integrated in.
         """
         BG, params = args
         # Metric eta adiabatic IC: the CRS series with beta_1 = 1/2, i.e.
@@ -241,9 +264,30 @@ class PerturbationEvolver(eqx.Module):
                     "misaligned."
                 )
             pieces.append(piece)
-        y_ini = jnp.concatenate([jnp.array([metric_eta_ini])] + pieces)
 
-        return y_ini
+        a = jnp.exp(lna_ini)
+        aH = BG.aH(lna_ini, params)
+        ctx = PerturbationContext(BG, params, self.species_list)
+
+        # alpha from the synchronous constraints, evaluated on the fluid ICs
+        # exactly as the species returned them. Mixing gauges across species
+        # is safe here
+        raw = jnp.concatenate([jnp.array([metric_eta_ini])] + pieces)
+        totals = AllSpeciesTotals.from_species(self.species_list, lna_ini, raw, ctx)
+        alpha_ini = (
+            SynchronousGauge().metric_history(k, a, aH, metric_eta_ini, totals).alpha
+        )
+
+        shift = self.gauge.ic_shift(k, lna_ini, aH, alpha_ini)
+        pieces = [
+            piece
+            if p.ic_gauge == self.gauge.name
+            else piece + p.y_ini_shift(shift, params)
+            for p, piece in zip(self.species_list, pieces, strict=True)
+        ]
+
+        metric_ini = self.gauge.metric_y_ini(aH, metric_eta_ini, alpha_ini)
+        return jnp.concatenate([jnp.atleast_1d(metric_ini)] + pieces)
 
     def get_derivatives(
         self, lna: ArrayLike, y: Float[Array, " n_y"], args: DerivativeArgs
@@ -252,7 +296,8 @@ class PerturbationEvolver(eqx.Module):
         Compute time derivatives for perturbation evolution.
 
         Assembles the full system of Einstein-Boltzmann equations for
-        metric and fluid perturbations in synchronous gauge.
+        metric and fluid perturbations. The metric half is delegated to
+        ``self.gauge``; the fluid half never learns which gauge it is in.
 
         Returns:
             Time derivatives of perturbation state
@@ -260,30 +305,17 @@ class PerturbationEvolver(eqx.Module):
         k, BG, params = args
         a = jnp.exp(lna)
         aH = BG.aH(lna, params)
-        metric_eta = y[0]
+        metric_y = y[0]
 
         # The single fluid-facing context, shared by the rho_* aggregates
         # here and the y_prime calls below.
         ctx = PerturbationContext(BG, params, self.species_list)
 
-        # Metric perturbation derivatives
-        sum_rho_delta = 0.0
-        sum_rho_plus_P_theta = 0.0
-
-        for i in range(len(self.species_list)):
-            species = self.species_list[i]
-            # If species has density perturbation, add to total.
-            sum_rho_delta += species.rho_delta(lna, y, ctx)
-            # If species has velocity perturbation, add to total.
-            sum_rho_plus_P_theta += species.rho_plus_P_theta(lna, y, ctx)
-
-        metric_h_prime, metric_eta_prime = _einstein_constraints(
-            k, a, aH, metric_eta, sum_rho_delta, sum_rho_plus_P_theta
-        )
-        sources = _synchronous_metric_sources(metric_h_prime, metric_eta_prime)
+        totals = AllSpeciesTotals.from_species(self.species_list, lna, y, ctx)
+        metric_y_prime, sources = self.gauge.sources(k, a, aH, metric_y, totals)
 
         # Now loop over all species and assemble their respective y_primes
-        y_prime = jnp.array([metric_eta_prime])
+        y_prime = jnp.atleast_1d(metric_y_prime)
         for i in range(len(self.species_list)):
             species = self.species_list[i]
             piece = species.y_prime(k, lna, sources, y, ctx)
@@ -384,16 +416,13 @@ class PerturbationEvolver(eqx.Module):
         k = self.k_axis_perturbations
         BG, params = args
 
-        metric_eta = modes[0]
+        metric_y = modes[0]
 
         species_perturbations = {
             s.name: s.output_perturbations(lna, modes, (BG, params))
             for s in self.species_list
         }
 
-        # Baryon velocity derivative — back-computed here via the fluid's own
-        # Baryon.theta_prime (diffrax saves states, not derivatives), so the
-        # Doppler source uses the same equation the ODE evolved.
         # Structural requirements on the named roles (narrows the types; fails
         # loudly for an incompatible replacement): the Baryon role needs cs2
         # and the standard layout, the Photon role the layout.
@@ -415,88 +444,43 @@ class PerturbationEvolver(eqx.Module):
         R = (4.0 * rho_g) / (3.0 * rho_b)
         tau_c = vmap(lambda l: BG.tau_c(l, params))(lna)[:, None]
 
-        theta_b_prime = baryon.theta_prime(
-            karr, delta_b, theta_b, theta_g, aH, cs2, R, tau_c
+        totals = AllSpeciesTotals.from_species_on_grid(
+            self.species_list, lna, modes, ctx
         )
 
-        # Sum density/velocity/shear over all species for metric derivatives and delta_m.
-        sum_rho_delta = jnp.zeros_like(modes[0])
-        sum_rho_plus_P_theta = jnp.zeros_like(modes[0])
-        sum_rho_plus_P_sigma = jnp.zeros_like(modes[0])
-        sum_rho_delta_m = jnp.zeros_like(modes[0])
-        sum_rho_m = 0.0
-
+        matter = _MatterSubtotals(modes)
+        cb = _MatterSubtotals(modes)
         for s in self.species_list:
-            if s.num_equations > 0:
+            if s.num_equations > 0 and s.is_matter:
                 rho_delta = vmap(s.rho_delta, in_axes=(0, 1, None))(lna, modes, ctx)
-                sum_rho_delta += rho_delta
-                sum_rho_plus_P_theta += vmap(s.rho_plus_P_theta, in_axes=(0, 1, None))(
+                rho_plus_P_theta = vmap(s.rho_plus_P_theta, in_axes=(0, 1, None))(
                     lna, modes, ctx
                 )
-                sum_rho_plus_P_sigma += vmap(s.rho_plus_P_sigma, in_axes=(0, 1, None))(
-                    lna, modes, ctx
-                )
+                rho_s = vmap(lambda l: s.rho(l, params))(lna)
+                rho_plus_P_s = rho_s + vmap(lambda l: s.P(l, params))(lna)
+                matter.add(rho_delta, rho_plus_P_theta, rho_s, rho_plus_P_s)
+                if not s.is_neutrino:
+                    cb.add(rho_delta, rho_plus_P_theta, rho_s, rho_plus_P_s)
+        # The same gauge object, and hence the same equations, the ODE field
+        # used -- batched on the output (lna, k) grid.
+        metric = self.gauge.metric_history(karr, a, aH, metric_y, totals)
+        _, sources = self.gauge.sources(karr, a, aH, metric_y, totals)
 
-                if s.is_matter:
-                    sum_rho_delta_m += rho_delta
-                    sum_rho_m += vmap(lambda l: s.rho(l, params))(lna)
-
-        delta_m = sum_rho_delta_m / sum_rho_m[:, None]
-
-        # Same Einstein constraints as the ODE field, batched on the
-        # output (lna, k) grid.
-        metric_h_prime, metric_eta_prime = _einstein_constraints(
-            karr, a, aH, metric_eta, sum_rho_delta, sum_rho_plus_P_theta
+        # Baryon velocity derivative
+        theta_b_prime = baryon.theta_prime(
+            karr, delta_b, theta_b, theta_g, aH, cs2, R, tau_c, sources.euler
         )
-        metric_alpha = aH * (metric_h_prime + 6.0 * metric_eta_prime) / 2.0 / karr**2
-        # alpha' from the anisotropic-stress (shear) Einstein equation.
-        grav_shear = 12.0 * jnp.pi * cnst.G * a**2
-        shear_term = (
-            grav_shear / aH * sum_rho_plus_P_sigma / cnst.c_Mpc_over_s**2 / karr**2
-        )
-        metric_alpha_prime = metric_eta / aH - 2.0 * metric_alpha - shear_term
 
         return PerturbationTable(
             k,
             lna,
-            delta_m,
+            matter.comoving_delta(karr, aH),
+            cb.comoving_delta(karr, aH),
             theta_b_prime,
-            SynchronousMetric(
-                eta=metric_eta,
-                h_prime=metric_h_prime,
-                eta_prime=metric_eta_prime,
-                alpha=metric_alpha,
-                alpha_prime=metric_alpha_prime,
-            ),
+            metric,
             species_perturbations,
+            self.gauge,
         )
-
-
-class SynchronousMetric(eqx.Module):
-    """
-     The synchronous-gauge metric history on the output ``(lna, k)`` grid.
-
-    Attributes:
-     -----------
-     eta : array
-         Metric perturbation η
-     h_prime : array
-         Time derivative of metric h (d/dlna). Retained for inspection; no
-         internal consumer reads it.
-     eta_prime : array
-         Time derivative of metric η (d/dlna)
-     alpha : array
-         Derived metric perturbation α = aH (h' + 6 eta') / 2k^2
-     alpha_prime : array
-         Time derivative of α, from the anisotropic-stress Einstein equation
-         (not by differentiating the energy constraint -- that would need h'')
-    """
-
-    eta: Float[Array, "n_lna n_k"]
-    h_prime: Float[Array, "n_lna n_k"]
-    eta_prime: Float[Array, "n_lna n_k"]
-    alpha: Float[Array, "n_lna n_k"]
-    alpha_prime: Float[Array, "n_lna n_k"]
 
 
 class PerturbationTable(eqx.Module):
@@ -514,22 +498,34 @@ class PerturbationTable(eqx.Module):
     lna : array
         Logarithm of scale factor grid
     delta_m : array
-        Total matter density perturbation, weighted sum over all matter species
+        Total matter density perturbation, weighted sum over all matter
+        species, in the **comoving gauge**. Gauge independent
+    delta_cb : array
+        As ``delta_m``, but over the *cold* matter species only -- baryons and
+        cold dark matter, i.e. matter outside the massive-neutrino sector.
     theta_b_prime : array
         Baryon velocity derivative (backward-calculated from Boltzmann equations)
-    metric : SynchronousMetric
-        The gauge's metric history (η, h', η', α, α') on the same grid.
+    metric : MetricHistory
+        The gauge's metric history on the same grid: (η, h', η', α, α') in
+        synchronous gauge, (φ, ψ, φ') in conformal Newtonian gauge.
     species_perturbations : dict
         Named perturbation arrays for each species, keyed by species name.
         Each value is a dict {quantity: array(Nlna, Nk)}.
         Species with no perturbations (e.g. dark energy) map to {}.
+        These are in the gauge named by ``gauge`` -- δ and θ are gauge
+        dependent, materially so above the horizon.
+    gauge : Gauge
+        The gauge this table was integrated in.
     """
 
     k: Float[Array, " n_k"]
     lna: Float[Array, " n_lna"]
     delta_m: Float[Array, "n_lna n_k"]
+    delta_cb: Float[Array, "n_lna n_k"]
     theta_b_prime: Float[Array, "n_lna n_k"]
 
-    metric: SynchronousMetric
+    metric: MetricHistory
 
     species_perturbations: dict[str, dict[str, Float[Array, "n_lna n_k"]]]
+
+    gauge: Gauge = eqx.field(default_factory=SynchronousGauge, static=True)

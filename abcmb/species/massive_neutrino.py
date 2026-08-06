@@ -195,11 +195,7 @@ class MassiveNeutrino(Fluid):
 
         with Psi2 and every higher moment gauge invariant.
 
-        The ``1 + w = 4/3`` below is the ultra-relativistic value, written out
-        rather than taken from :meth:`w`: at ``tau_ini`` these neutrinos are
-        relativistic, which is the approximation :meth:`y_ini` is already built
-        on, and the two must agree or the ICs and their transformation would
-        describe different states.
+        The ``1 + w = 4/3`` below is the ultra-relativistic value
 
         This is CLASS's ordering too (``perturbations.c``): the ncdm initial
         conditions are built from the *already transformed* relativistic
@@ -264,13 +260,6 @@ class MassiveNeutrino(Fluid):
             )
             Psi = y[L]
 
-            # The metric enters the three lowest moments, one source slot
-            # each, all scaled by dlnf0/dlnq per MB95 Eq. (56): the l=0 slot
-            # takes continuity/3 (= h'/6 in synchronous), the l=1 slot takes
-            # euler weighted by epsilon/q (the free-streaming factor that the
-            # velocity source picks up for a massive species, and the reason
-            # this is not simply the standard-fluid Euler term), and the l=2
-            # slot takes 2/15 * shear.
             Psi0_prime = (
                 -q / epsilon / aH * Psi[1] + sources.continuity / 3.0 * dlnf0_dlnq
             )
