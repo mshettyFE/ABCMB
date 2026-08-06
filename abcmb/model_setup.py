@@ -17,8 +17,10 @@ import numpy as np
 from jaxtyping import Array, Float
 
 from . import species
+from .gauges import resolve_gauge
 
 if TYPE_CHECKING:
+    from .gauges import Gauge
     from .inputs._schema_types import Options
 
 
@@ -57,9 +59,51 @@ def _check_scalar_contract(instance: species.Fluid) -> None:
             )
 
 
+def _check_ic_gauge_declared(instance: species.Fluid) -> None:
+    """
+    A fluid that writes its own initial conditions must say which gauge it
+    wrote them in.
+    """
+    cls = type(instance)
+    if instance.num_equations == 0 or cls.y_ini is species.Fluid.y_ini:
+        return
+    if any("ic_gauge" in c.__dict__ for c in cls.__mro__ if c is not species.Fluid):
+        return
+    valid = ", ".join(f"GaugeName.{g.name}" for g in species.GaugeName)
+    raise TypeError(
+        f"species '{instance.name}' defines its own y_ini but does not declare "
+        "ic_gauge, so ABCMB cannot tell which gauge its initial conditions are "
+        f"written in. Add a class attribute ic_gauge = <{valid}>. If you built "
+        "them from abcmb.species.adiabatic_ics, they are synchronous "
+        "(see docs/promoting_a_fluid.rst)."
+    )
+
+
+def _check_ic_gauge(instance: species.Fluid, gauge: "Gauge") -> None:
+    """
+    A fluid whose ``y_ini`` is written in the other gauge must be able to say
+    how to transform it.
+
+    """
+    if instance.ic_gauge == gauge.name:
+        return
+    if type(instance).y_ini_shift is species.Fluid.y_ini_shift:
+        raise NotImplementedError(
+            f"species '{instance.name}' declares ic_gauge="
+            f"'{instance.ic_gauge}' but this model integrates in the "
+            f"'{gauge.name}' gauge, and {type(instance).__name__} does not "
+            "implement y_ini_shift, so its initial conditions cannot be "
+            "transformed. Either subclass species.StandardFluid (which "
+            "implements it for the delta/theta/sigma layout), implement "
+            "y_ini_shift, or write y_ini in the gauge you run in "
+            "(see docs/promoting_a_fluid.rst)."
+        )
+
+
 def populate_species(
     user_species: "Sequence[type[species.Fluid]] | None",
     options: "Options",
+    gauge: "Gauge | None" = None,
 ) -> "tuple[species.Fluid, ...]":
     """
     Instantiate the model's fluid stack: the baseline LCDM species (when
@@ -69,12 +113,19 @@ def populate_species(
     fluid itself so it can assign ``first_idx`` (the fluid's offset into the
     diffrax state vector) cumulatively from the fluids registered before it.
 
+    ``gauge`` is the gauge the model will integrate in.
+    It is *not* passed to the fluids -- no fluid may
+    know which gauge it is integrating in -- and is used only to check that every fluid's
+    declared ``ic_gauge`` can be honoured.
+
     Returns the species tuple; coupled fluids are looked up in it by name
     (``species.find_species``). Raises at construction on non-Fluid entries,
-    duplicate names, and missing or impostor ``Baryon``/``Photon`` roles (the
-    baryon-photon coupling requires genuine subclasses; see
-    docs/promoting_a_fluid.rst).
+    duplicate names, missing or impostor ``Baryon``/``Photon`` roles (the
+    baryon-photon coupling requires genuine subclasses), and untransformable
+    initial-condition gauges; see docs/promoting_a_fluid.rst.
     """
+    if gauge is None:
+        gauge = resolve_gauge(options["gauge"])
     species_list = ()
 
     lcdm_species = (
@@ -110,6 +161,8 @@ def populate_species(
             )
         instance = s(diffrax_vector_idx, options)
         _check_scalar_contract(instance)
+        _check_ic_gauge_declared(instance)
+        _check_ic_gauge(instance, gauge)
         if any(existing.name == instance.name for existing in species_list):
             raise ValueError(
                 f"duplicate species name '{instance.name}': every fluid needs a "

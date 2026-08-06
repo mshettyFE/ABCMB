@@ -11,6 +11,8 @@ from jax import config
 from jax.typing import ArrayLike
 from jaxtyping import Array, Float
 
+from ..metric import GaugeName, GaugeShift, MetricSources
+
 if TYPE_CHECKING:
     from ..background import Background
 
@@ -24,20 +26,6 @@ config.update("jax_enable_x64", True)
 FluidParams = Mapping[str, Array]
 
 _F = TypeVar("_F", bound="Fluid")
-
-
-class MetricSources(eqx.Module):
-    """
-    The metric's contribution to a fluid's equations, in the three slots it can
-    occupy. Written once by the evolver, read by every ``y_prime``.
-
-    Deliberately carries no gauge tag: a fluid must not be able to ask which
-    gauge it is in, since that is exactly what this abstraction buys.
-    """
-
-    continuity: Array
-    euler: Array
-    shear: Array
 
 
 class PerturbationContext(eqx.Module):
@@ -78,6 +66,12 @@ class Fluid(eqx.Module):
     # Sector flag like is_matter, but optional: neutrino-like species opt in.
     # used for the Neff / R_nu accounting in derive_parameters
     is_neutrino: ClassVar[bool] = False
+    # Which gauge's variables this fluid's *own* y_ini is written in. The one
+    # gauge-valued thing a fluid may state, and strictly a claim about y_ini:
+    # the evolver converts as needed (see y_ini_shift). It deliberately says
+    # nothing about y_prime, which is gauge-agnostic by construction, and a
+    # fluid must never branch on it.
+    ic_gauge: ClassVar[GaugeName] = GaugeName.SYNCHRONOUS
     # Position of first perturbation equation in Diffrax vector. Slot 0 is reserved
     # for metric perturbations, so fluid block actually starts at 1.
     first_idx: int = eqx.field(static=True)
@@ -130,20 +124,47 @@ class Fluid(eqx.Module):
         """
         Calculates the initial state of perturbation modes at early cosmological times.
 
-        Two conventions are implicit in this signature, so they are stated here:
+        Two gotchas to think about:
 
         * **The adiabatic mode.** Returning a single state leaves no room for the
           isocurvature modes, so "adiabatic" is what this method means. Supporting
-          the others would need the mode as an argument.
-        * **Synchronous-gauge variables.** The shared series in
-          :mod:`.adiabatic_ics` are normalized to ``eta = 1`` superhorizon, which
-          is the synchronous metric perturbation.
+          the others would need the mode as an argument. (TBD)
+        * **The gauge of the returned variables** is whichever gauge the class
+          declares in :attr:`ic_gauge` (synchronous by default).
+          Write the ICs in the gauge your derivation
+          uses and declare it; the evolver converts them via
+          :meth:`y_ini_shift`. Do not convert by hand and do not branch on the gauge here.
 
         Returns:
            Initial perturbation mode values
         """
         raise NotImplementedError(
             "Fluid species must implement the initial conditions of their perturbation modes."
+        )
+
+    def y_ini_shift(
+        self, shift: GaugeShift, args: FluidParams
+    ) -> Float[Array, " n_eqs"]:
+        """
+        The additive change to :meth:`y_ini` that moves it out of
+        :attr:`ic_gauge` and into the gauge being integrated in.
+
+        Called only when the two differ, with ``shift`` already signed for the
+        required direction (see :class:`GaugeShift`).
+
+        :class:`StandardFluid` implements this for the delta/theta/sigma
+        layout, which is why the vast majority of fluids never write it. A
+        fluid implementing :class:`Fluid` directly must supply it, but only if
+        it declares an ``ic_gauge`` that a run might disagree with;
+        ``populate_species`` checks this at construction
+
+        Returns:
+           Additive shift to the initial perturbation modes
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} declares ic_gauge={self.ic_gauge} but does "
+            "not implement y_ini_shift, so its initial conditions cannot be "
+            "transformed into another gauge (see docs/promoting_a_fluid.rst)."
         )
 
     def y_prime(
@@ -263,6 +284,21 @@ class StandardFluid(Fluid):
 
     """
 
+    def y_ini_shift(self, shift: GaugeShift, args: FluidParams) -> Array:
+        r"""
+        The delta/theta/sigma layout's gauge shift: the density entry scaled by
+        this fluid's own :math:`1+w` (Ma & Bertschinger 1995 Eq. 27).
+
+        Returns:
+           Additive shift to the initial perturbation modes
+        """
+        w = self.w(shift.lna, args)
+        out = jnp.zeros(self.num_equations)
+        out = out.at[0].set((1.0 + w) * shift.delta_per_one_plus_w)
+        if self.num_equations > 1:
+            out = out.at[1].set(shift.theta)
+        return out
+
     def get_delta(self, lna: ArrayLike, y: Array, args: PerturbationContext) -> Array:
         """
         Getter method for density perturbation from perturbation equations vector
@@ -352,6 +388,12 @@ class BackgroundFluid(Fluid):
     def y_ini(self, k: ArrayLike, tau_ini: ArrayLike, args: FluidParams) -> Array:
         """
         Trivial initial condition vector for background.
+        """
+        return jnp.array([])
+
+    def y_ini_shift(self, shift: GaugeShift, args: FluidParams) -> Array:
+        """
+        Trivial gauge shift for background: no perturbations to transform.
         """
         return jnp.array([])
 

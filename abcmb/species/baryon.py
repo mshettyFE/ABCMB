@@ -11,10 +11,10 @@ from jax.typing import ArrayLike
 from jaxtyping import Array, Float
 
 from .. import constants as cnst
+from ..metric import GaugeName, MetricSources
 from . import adiabatic_ics
 from .base import (
     FluidParams,
-    MetricSources,
     OutputArgs,
     PerturbationContext,
     StandardFluid,
@@ -32,6 +32,10 @@ class Baryon(StandardFluid):
     name = "Baryon"
     num_equations = 2
     is_matter = True
+    # y_ini is built from the shared series in adiabatic_ics, which are
+    # synchronous; declared rather than inherited so the fact sits with
+    # the initial conditions it describes.
+    ic_gauge = GaugeName.SYNCHRONOUS
 
     def rho(self, lna: ArrayLike, args: FluidParams) -> Array | float:
         """
@@ -122,13 +126,24 @@ class Baryon(StandardFluid):
         cs2: ArrayLike,
         R: ArrayLike,
         tau_c: ArrayLike,
+        euler: ArrayLike,
     ) -> Array:
         """
         Baryon velocity derivative: the theta_b line of Ma & Bertschinger
         (1995) Eq. (66), with R = 4*rho_g/(3*rho_b) and tau_c the Thomson
         time, given the background quantities already evaluated at lna.
+
+        ``euler`` is ``sources.euler``, the metric's contribution to the Euler
+        equation. It is a required argument rather than a defaulted one
+        precisely because it vanishes in synchronous gauge: a default would
+        make omitting it correct-looking and silently wrong elsewhere.
         """
-        return -theta + cs2 * k**2 * delta / aH + R / tau_c / aH * (theta_g - theta)
+        return (
+            -theta
+            + cs2 * k**2 * delta / aH
+            + euler
+            + R / tau_c / aH * (theta_g - theta)
+        )
 
     def y_prime(
         self,
@@ -162,7 +177,9 @@ class Baryon(StandardFluid):
         theta = y[self.first_idx + 1]
         theta_g = photon.get_theta(lna, y, args)
         delta_prime = -(theta / aH + sources.continuity)
-        theta_prime = self.theta_prime(k, delta, theta, theta_g, aH, cs2, R, tau_c)
+        theta_prime = self.theta_prime(
+            k, delta, theta, theta_g, aH, cs2, R, tau_c, sources.euler
+        )
 
         return jnp.array([delta_prime, theta_prime])
 
