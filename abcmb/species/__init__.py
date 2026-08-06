@@ -8,13 +8,13 @@ a re-export here. The public surface of the former single-module
 ``abcmb.species`` is preserved.
 """
 
+from ..metric import GaugeName, GaugeShift, MetricSources
 from . import adiabatic_ics
 from .baryon import Baryon
 from .base import (
     BackgroundFluid,
     Fluid,
     FluidParams,
-    MetricSources,
     OutputArgs,
     PerturbationContext,
     StandardFluid,
@@ -28,7 +28,9 @@ from .photon import Photon
 from .validation import (
     adiabatic_ic_residuals,
     continuity_residuals,
+    gauge_source_omissions,
     ic_scaling_residuals,
+    metric_source_dependence,
 )
 
 __all__ = [
@@ -39,6 +41,8 @@ __all__ = [
     "DarkEnergy",
     "Fluid",
     "FluidParams",
+    "GaugeName",
+    "GaugeShift",
     "MasslessNeutrino",
     "MassiveNeutrino",
     "MetricSources",
@@ -50,4 +54,6 @@ __all__ = [
     "continuity_residuals",
     "adiabatic_ic_residuals",
     "ic_scaling_residuals",
+    "metric_source_dependence",
+    "gauge_source_omissions",
 ]

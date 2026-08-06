@@ -5,7 +5,7 @@ See :doc:`choosing_a_gauge` for what the choice affects and where.
 """
 
 from ..metric import GaugeName
-from .base import CMBMetricSources, FluidTotals, Gauge, MetricHistory
+from .base import AllSpeciesTotals, CMBMetricSources, Gauge, MetricHistory
 from .newtonian import NewtonianGauge, NewtonianMetric
 from .synchronous import SynchronousGauge, SynchronousMetric
 
@@ -35,7 +35,7 @@ def resolve_gauge(value: str) -> Gauge:
 __all__ = [
     "GAUGES",
     "CMBMetricSources",
-    "FluidTotals",
+    "AllSpeciesTotals",
     "Gauge",
     "MetricHistory",
     "NewtonianGauge",

@@ -11,10 +11,10 @@ from jax.typing import ArrayLike
 from jaxtyping import Array, Float
 
 from .. import constants as cnst
+from ..metric import GaugeName, MetricSources
 from . import adiabatic_ics
 from .base import (
     FluidParams,
-    MetricSources,
     OutputArgs,
     PerturbationContext,
     StandardFluid,
@@ -36,6 +36,10 @@ class Photon(StandardFluid):
     num_G_ell_modes: int = eqx.field(default=0, static=True)
     name = "Photon"
     is_matter = False
+    # y_ini is built from the shared series in adiabatic_ics, which are
+    # synchronous; declared rather than inherited so the fact sits with
+    # the initial conditions it describes.
+    ic_gauge = GaugeName.SYNCHRONOUS
 
     def __init__(self, first_idx, options, **kwargs):
         super().__init__(first_idx, options, **kwargs)
@@ -120,7 +124,11 @@ class Photon(StandardFluid):
         theta_b = baryon.get_theta(lna, y, args)
 
         delta_prime = -4.0 / 3.0 * (theta / aH + sources.continuity)
-        theta_prime = k**2 / aH * (delta / 4.0 - sigma) + (theta_b - theta) / aH / tau_c
+        theta_prime = (
+            k**2 / aH * (delta / 4.0 - sigma)
+            + sources.euler
+            + (theta_b - theta) / aH / tau_c
+        )
         sigma_prime = (
             4.0 / 15.0 * (theta / aH + sources.shear)
             - 3.0 / 10.0 * k / aH * F[3]

@@ -10,8 +10,8 @@ from jaxtyping import Array, Float
 
 from ..metric import GaugeName, GaugeShift, MetricSources
 from .base import (
+    AllSpeciesTotals,
     CMBMetricSources,
-    FluidTotals,
     Gauge,
     MetricHistory,
     _grav,
@@ -108,7 +108,7 @@ class NewtonianGauge(Gauge):
         a: ArrayLike,
         aH: ArrayLike,
         metric_y: ArrayLike,
-        totals: FluidTotals,
+        totals: AllSpeciesTotals,
     ) -> tuple[Array, MetricSources]:
         """
         ``psi`` from the anisotropic-stress constraint and ``phi'`` from the
@@ -133,7 +133,7 @@ class NewtonianGauge(Gauge):
         a: ArrayLike,
         aH: ArrayLike,
         metric_y: ArrayLike,
-        totals: FluidTotals,
+        totals: AllSpeciesTotals,
     ) -> NewtonianMetric:
         """(phi, psi, phi') on the output grid."""
         phi_prime, sources = self.sources(k, a, aH, metric_y, totals)

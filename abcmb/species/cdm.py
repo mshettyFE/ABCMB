@@ -1,18 +1,16 @@
 """
 Cold dark matter.
-    Follows Ma & Bertschinger (1995), ApJ 455, 7 (arXiv:astro-ph/9506072).
-    CDM defines the synchronous gauge (theta_c = 0), leaving the single
-    evolution equation."""
+    Follows Ma & Bertschinger (1995), ApJ 455, 7 (arXiv:astro-ph/9506072)."""
 
 import jax.numpy as jnp
 from jax.typing import ArrayLike
 from jaxtyping import Array, Float
 
 from .. import constants as cnst
+from ..metric import GaugeName, MetricSources
 from . import adiabatic_ics
 from .base import (
     FluidParams,
-    MetricSources,
     OutputArgs,
     PerturbationContext,
     StandardFluid,
@@ -23,14 +21,27 @@ class ColdDarkMatter(StandardFluid):
     """
     Cold dark matter fluid species implementation.
 
-    Non-relativistic, pressureless dark matter with density
-    perturbations but no velocity or shear modes.
+    Non-relativistic, pressureless dark matter with density and velocity
+    perturbations and no shear.
 
+    Notes
+    -----
+    The velocity is carried in both gauges even though synchronous gauge is
+    *defined* by ``theta_c = 0``. That costs one identically-zero component of
+    the state vector there (it starts at zero and its only source,
+    ``sources.euler``, vanishes in that gauge), and buys a fluid that is the
+    same code in every gauge -- the alternative is a species that has to be
+    told which gauge it is in, which is the one thing the ``MetricSources``
+    abstraction exists to prevent.
     """
 
     name = "ColdDarkMatter"
-    num_equations = 1  # CDM only receives density perturbation in synchronous gauge.
+    num_equations = 2
     is_matter = True
+    # y_ini is built from the shared series in adiabatic_ics, which are
+    # synchronous; declared rather than inherited so the fact sits with
+    # the initial conditions it describes.
+    ic_gauge = GaugeName.SYNCHRONOUS
 
     def rho(self, lna: ArrayLike, args: FluidParams) -> Array | float:
         """
@@ -60,12 +71,16 @@ class ColdDarkMatter(StandardFluid):
         counts particles, radiation counts T^4). Series and citations in
         :mod:`.adiabatic_ics`.
 
+        The velocity starts at zero, which is the defining condition of the
+        synchronous gauge these series are written in; the evolver's gauge
+        transformation is what gives it the right nonzero start elsewhere.
+
         Returns:
-            Initial density perturbation (units: dimensionless)
+            Initial perturbation mode values (units: 1/Mpc for theta, else dimensionless)
         """
         params = args
         delta = 0.75 * adiabatic_ics.delta_gamma(k, tau_ini, params)
-        return jnp.array([delta])
+        return jnp.array([delta, 0.0])
 
     def y_prime(
         self,
@@ -77,16 +92,22 @@ class ColdDarkMatter(StandardFluid):
     ) -> Array:
         """
         Compute time derivatives of cold dark matter perturbations.
-        Eq. 42 in Ma and Bertschinger (1995).
+        Eq. 42 in Ma and Bertschinger (1995), with w = cs2 = 0 -- identical to
+        the baryon pair minus the Thomson coupling.
 
-        CDM has no Euler equation here: synchronous gauge is *defined* by the
-        CDM frame (theta_c = 0), so only the density survives. That is a
-        property of the gauge, not of CDM.
+        Note the ``theta / aH`` in the continuity equation. It vanishes in
+        synchronous gauge along with ``sources.euler``, so dropping it is
+        invisible there and silently rescales the matter power spectrum
+        everywhere else.
 
         Returns:
-            Time derivative of density perturbation (units: dimensionless)
+            Time derivatives of perturbation modes (units: 1/Mpc for theta, else dimensionless)
         """
-        return jnp.array([-sources.continuity])
+        aH = args.BG.aH(lna, args.params)
+        theta = y[self.first_idx + 1]
+        delta_prime = -(theta / aH + sources.continuity)
+        theta_prime = -theta + sources.euler
+        return jnp.array([delta_prime, theta_prime])
 
     def output_perturbations(
         self,
@@ -94,5 +115,8 @@ class ColdDarkMatter(StandardFluid):
         modes: Float[Array, "n_y n_lna n_k"],
         args: OutputArgs,
     ) -> dict[str, Float[Array, "n_lna n_k"]]:
-        """Output keys: ``delta``."""
-        return {"delta": modes[self.first_idx]}
+        """Output keys: ``delta``, ``theta``."""
+        return {
+            "delta": modes[self.first_idx],
+            "theta": modes[self.first_idx + 1],
+        }

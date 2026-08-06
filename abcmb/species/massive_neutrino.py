@@ -9,11 +9,11 @@ from jax.typing import ArrayLike
 from jaxtyping import Array, Float
 
 from .. import constants as cnst
+from ..metric import GaugeName, GaugeShift, MetricSources
 from . import adiabatic_ics
 from .base import (
     Fluid,
     FluidParams,
-    MetricSources,
     OutputArgs,
     PerturbationContext,
 )
@@ -60,6 +60,10 @@ class MassiveNeutrino(Fluid):
     name = "MassiveNeutrino"
     is_matter = True
     is_neutrino = True
+    # y_ini is built from the shared series in adiabatic_ics, which are
+    # synchronous; declared rather than inherited so the fact sits with
+    # the initial conditions it describes.
+    ic_gauge = GaugeName.SYNCHRONOUS
 
     def __init__(self, first_idx, options, **kwargs):
 
@@ -180,6 +184,43 @@ class MassiveNeutrino(Fluid):
 
         return jnp.concatenate(bins)
 
+    def y_ini_shift(self, shift: GaugeShift, args: FluidParams) -> Array:
+        """
+        The gauge shift of the initial conditions, pushed through the same
+        MB95 Eq. (97) mapping that :meth:`y_ini` uses: shift the underlying
+        (delta, theta) and re-map, giving
+
+            Psi0 -= (delta_shift / 4) dlnf0/dlnq,
+            kPsi1 -= (theta_shift / 3) dlnf0/dlnq,
+
+        with Psi2 and every higher moment gauge invariant.
+
+        The ``1 + w = 4/3`` below is the ultra-relativistic value, written out
+        rather than taken from :meth:`w`: at ``tau_ini`` these neutrinos are
+        relativistic, which is the approximation :meth:`y_ini` is already built
+        on, and the two must agree or the ICs and their transformation would
+        describe different states.
+
+        This is CLASS's ordering too (``perturbations.c``): the ncdm initial
+        conditions are built from the *already transformed* relativistic
+        delta/theta rather than transformed afterwards.
+
+        Returns:
+           Additive shift to the initial perturbation modes
+        """
+        dlnf0_dlnq = self._dlnf0_dlnq_pert()
+        delta_shift = (4.0 / 3.0) * shift.delta_per_one_plus_w
+        theta_shift = shift.theta
+        bins = []
+        for i in range(len(self.q_pert)):
+            first_three = (
+                -jnp.array([delta_shift / 4.0, theta_shift / 3.0, 0.0]) * dlnf0_dlnq[i]
+            )
+            bins.append(
+                jnp.concatenate((first_three, jnp.zeros(self.num_ells_per_bin - 3)))
+            )
+        return jnp.concatenate(bins)
+
     def y_prime(
         self,
         k: ArrayLike,
@@ -223,13 +264,20 @@ class MassiveNeutrino(Fluid):
             )
             Psi = y[L]
 
-            # The metric enters the monopole and quadrupole only: the l=0 slot
-            # takes continuity/3 (= h'/6 in synchronous) and the l=2 slot takes
-            # 2/15 * shear, both scaled by dlnf0/dlnq per MB95 Eq. (56).
+            # The metric enters the three lowest moments, one source slot
+            # each, all scaled by dlnf0/dlnq per MB95 Eq. (56): the l=0 slot
+            # takes continuity/3 (= h'/6 in synchronous), the l=1 slot takes
+            # euler weighted by epsilon/q (the free-streaming factor that the
+            # velocity source picks up for a massive species, and the reason
+            # this is not simply the standard-fluid Euler term), and the l=2
+            # slot takes 2/15 * shear.
             Psi0_prime = (
                 -q / epsilon / aH * Psi[1] + sources.continuity / 3.0 * dlnf0_dlnq
             )
-            kPsi1_prime = q * k**2 / 3.0 / epsilon / aH * (Psi[0] - 2.0 * Psi[2])
+            kPsi1_prime = (
+                q * k**2 / 3.0 / epsilon / aH * (Psi[0] - 2.0 * Psi[2])
+                - epsilon / 3.0 / q * sources.euler * dlnf0_dlnq
+            )
             Psi2_prime = (
                 q * k / 5.0 / epsilon / aH * (2.0 * Psi[1] / k - 3.0 * Psi[3])
                 - 2.0 / 15.0 * sources.shear * dlnf0_dlnq

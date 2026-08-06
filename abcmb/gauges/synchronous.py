@@ -10,8 +10,8 @@ from jaxtyping import Array, Float
 
 from ..metric import GaugeName, GaugeShift, MetricSources
 from .base import (
+    AllSpeciesTotals,
     CMBMetricSources,
-    FluidTotals,
     Gauge,
     MetricHistory,
     _grav,
@@ -119,7 +119,7 @@ class SynchronousGauge(Gauge):
         a: ArrayLike,
         aH: ArrayLike,
         metric_y: ArrayLike,
-        totals: FluidTotals,
+        totals: AllSpeciesTotals,
     ) -> tuple[Array, MetricSources]:
         """
         The energy constraint gives ``h'``, the momentum constraint ``eta'``
@@ -146,7 +146,7 @@ class SynchronousGauge(Gauge):
         a: ArrayLike,
         aH: ArrayLike,
         metric_y: ArrayLike,
-        totals: FluidTotals,
+        totals: AllSpeciesTotals,
     ) -> SynchronousMetric:
         """(eta, h', eta', alpha, alpha') on the output grid."""
         eta_prime, sources = self.sources(k, a, aH, metric_y, totals)

@@ -45,7 +45,7 @@ from .. import constants as cnst
 from ..metric import GaugeName, GaugeShift, MetricSources
 
 if TYPE_CHECKING:
-    # Annotations only, for FluidTotals' constructors. Deliberately not a
+    # Annotations only, for AllSpeciesTotals' constructors. Deliberately not a
     # runtime import: gauges must not depend on the fluid machinery
     from ..species import Fluid, PerturbationContext
 
@@ -104,10 +104,16 @@ class MetricHistory(eqx.Module):
         raise NotImplementedError("A metric history must define its CMB source terms.")
 
 
-class FluidTotals(eqx.Module):
+class AllSpeciesTotals(eqx.Module):
     """
     The stress-energy sums the Einstein equations close on: the fluid side of
-    the constraint equations, summed over every species in the model.
+    the constraint equations, summed over **every** species in the model.
+
+    Named for that membership, to separate it from
+    ``perturbations._MatterSubtotals``, which sums a subset (matter, and cold
+    matter) and carries the unperturbed densities that a ratio like ``delta_m``
+    needs. The constraints use absolute sums, so this one carries the shear and
+    no denominators.
 
     Assembled once per evaluation and handed to the gauge, so that the gauge
     never iterates over species and the species never see a metric variable.
@@ -133,7 +139,7 @@ class FluidTotals(eqx.Module):
         lna: ArrayLike,
         y: Array,
         ctx: "PerturbationContext",
-    ) -> "FluidTotals":
+    ) -> "AllSpeciesTotals":
         """
         Sum the stress-energy of every species at a single ``lna``, from the
         state vector ``y``. This is the form the ODE vector field uses.
@@ -162,7 +168,7 @@ class FluidTotals(eqx.Module):
         lna: Float[Array, " n_lna"],
         modes: Float[Array, "n_y n_lna n_k"],
         ctx: "PerturbationContext",
-    ) -> "FluidTotals":
+    ) -> "AllSpeciesTotals":
         """
         As :meth:`from_species`, batched over the output ``(lna, k)`` grid.
 
@@ -304,7 +310,7 @@ class Gauge(eqx.Module):
         a: ArrayLike,
         aH: ArrayLike,
         metric_y: ArrayLike,
-        totals: FluidTotals,
+        totals: AllSpeciesTotals,
     ) -> tuple[Array, MetricSources]:
         """
         Close the fluid system: return ``(d(metric_y)/dlna, sources)`` from
@@ -318,7 +324,7 @@ class Gauge(eqx.Module):
         a: ArrayLike,
         aH: ArrayLike,
         metric_y: ArrayLike,
-        totals: FluidTotals,
+        totals: AllSpeciesTotals,
     ) -> MetricHistory:
         """
         The gauge's metric variables on the output grid, for

@@ -7,10 +7,10 @@ from jax.typing import ArrayLike
 from jaxtyping import Array, Float
 
 from .. import constants as cnst
+from ..metric import GaugeName, MetricSources
 from . import adiabatic_ics
 from .base import (
     FluidParams,
-    MetricSources,
     OutputArgs,
     PerturbationContext,
     StandardFluid,
@@ -25,6 +25,10 @@ class MasslessNeutrino(StandardFluid):
     name = "MasslessNeutrino"
     is_matter = False
     is_neutrino = True
+    # y_ini is built from the shared series in adiabatic_ics, which are
+    # synchronous; declared rather than inherited so the fact sits with
+    # the initial conditions it describes.
+    ic_gauge = GaugeName.SYNCHRONOUS
 
     def __init__(self, first_idx, options, **kwargs):
         super().__init__(first_idx, options, **kwargs)
@@ -113,7 +117,7 @@ class MasslessNeutrino(StandardFluid):
 
         # density, velocity, shear perturbations
         delta_prime = -4.0 / 3.0 * (theta / aH + sources.continuity)
-        theta_prime = k**2 / aH * (delta / 4.0 - sigma)
+        theta_prime = k**2 / aH * (delta / 4.0 - sigma) + sources.euler
         sigma_prime = (
             4.0 / 15.0 * (theta / aH + sources.shear) - 3.0 / 10.0 * k / aH * F[3]
         )
