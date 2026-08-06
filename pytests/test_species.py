@@ -196,9 +196,16 @@ def test_y_ini_layout_mismatch_raises():
 
     import jax.numpy as jnp
 
+    from abcmb.gauges import SynchronousGauge
     from abcmb.perturbations import PerturbationEvolver
+    from abcmb.species import GaugeName
 
     class _P:
+        # Enough of the Fluid surface for IC assembly: the layout check, the
+        # stress-energy sums that fix the gauge generator, and the IC-gauge
+        # declaration.
+        ic_gauge = GaugeName.SYNCHRONOUS
+
         def __init__(self, name, num_equations, ini_len):
             self.name, self.num_equations = name, num_equations
             self._ini_len = ini_len
@@ -206,14 +213,27 @@ def test_y_ini_layout_mismatch_raises():
         def y_ini(self, k, tau_ini, params):
             return jnp.zeros(self._ini_len)
 
-    params = {"om": jnp.asarray(1e-3), "R_nu": jnp.asarray(0.4)}
-    bg = types.SimpleNamespace(tau=lambda lna: 1.0)
+        def rho_delta(self, lna, y, ctx):
+            return 0.0
 
-    good = types.SimpleNamespace(species_list=(_P("A", 2, 2), _P("B", 1, 1)))
+        def rho_plus_P_theta(self, lna, y, ctx):
+            return 0.0
+
+        def rho_plus_P_sigma(self, lna, y, ctx):
+            return 0.0
+
+    params = {"om": jnp.asarray(1e-3), "R_nu": jnp.asarray(0.4)}
+    bg = types.SimpleNamespace(tau=lambda lna: 1.0, aH=lambda lna, p: 1.0)
+
+    good = types.SimpleNamespace(
+        species_list=(_P("A", 2, 2), _P("B", 1, 1)), gauge=SynchronousGauge()
+    )
     out = PerturbationEvolver.initial_conditions_one_k(good, 0.1, -14.0, (bg, params))
     assert out.shape == (4,)  # 1 metric slot + 2 + 1
 
-    bad = types.SimpleNamespace(species_list=(_P("A", 0, 2),))  # claims 0, returns 2
+    bad = types.SimpleNamespace(
+        species_list=(_P("A", 0, 2),), gauge=SynchronousGauge()
+    )  # claims 0, returns 2
     with pytest.raises(ValueError, match="declares num_equations=0"):
         PerturbationEvolver.initial_conditions_one_k(bad, 0.1, -14.0, (bg, params))
 

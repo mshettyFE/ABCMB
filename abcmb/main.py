@@ -13,6 +13,7 @@ from jaxtyping import Array, Float
 
 from . import background, model_setup, perturbations, spectrum
 from .background import Background, BackgroundPreRecomb
+from .gauges import resolve_gauge
 from .hyrex import hyrex
 from .inputs import derived, schema
 from .linx.abundances import AbundanceModel
@@ -118,8 +119,14 @@ class Model(eqx.Module):
         options = schema.resolve_options(kwargs)
         self.options = options
 
+        # The gauge to integrate in
+        gauge = resolve_gauge(options["gauge"])
+        # The solver defaults are converged in synchronous gauge only; say so
+        # rather than quietly returning less accurate spectra.
+        gauge.check_tolerances(options)
+
         # Populate all species
-        self.species_list = model_setup.populate_species(user_species, options)
+        self.species_list = model_setup.populate_species(user_species, options, gauge)
 
         # Initialize perturbation evolver
         k_axis_perturbations, k_axis_Pk_output, k_min, k_max_cmb = (
@@ -129,6 +136,7 @@ class Model(eqx.Module):
             self.species_list,
             k_axis_perturbations,
             options,
+            gauge=gauge,
             adjoint=adjoint,
         )
 

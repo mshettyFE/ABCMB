@@ -3,6 +3,7 @@ import pytest
 from classy import Class
 
 from abcmb import species
+from abcmb.gauges import NewtonianGauge
 from abcmb.main import Model
 
 # JAX platform, x64, and debug_nans are configured in conftest.py.
@@ -256,3 +257,43 @@ def test_end_to_end_differentiability():
     print(f"d(sum ClTT)/dh: AD {float(ad):+.4e}  FD {fd:+.4e}  rel {rel:.2e}")
     assert jnp.isfinite(ad), "AD returned non-finite h-gradient"
     assert rel < 2e-2, f"AD vs FD h-gradient disagreement {rel:.2e}"
+
+
+def test_gauge_independence_of_observables():
+    """
+    The same cosmology in both gauges must give the same observables.
+    """
+    opts = dict(
+        l_max=1200,
+        k_max=0.3,
+        l_max_g=12,
+        l_max_pol_g=10,
+        **NewtonianGauge.recommended_tolerances,
+        max_steps_PE=NewtonianGauge.recommended_max_steps,
+    )
+    params = {"h": 0.6762, "omega_cdm": 0.1193, "omega_b": 0.0225}
+
+    out = {g: Model(gauge=g, **opts)(params) for g in ("synchronous", "newtonian")}
+    sync, conf = out["synchronous"], out["newtonian"]
+
+    # P(k) is reported in the comoving gauge precisely so that it is gauge
+    # independent.
+    k = np.asarray(sync.k)
+    sub = k > 1e-3
+    err_pk = np.abs(np.asarray(conf.Pk) - np.asarray(sync.Pk)) / np.asarray(sync.Pk)
+    print(
+        f"gauge P(k) max rel err: {err_pk[sub].max():.3e} (k>1e-3), "
+        f"{err_pk.max():.3e} (all k)"
+    )
+    assert err_pk[sub].max() <= 0.01, (
+        f"P(k) is gauge dependent: {err_pk[sub].max():.3e}"
+    )
+
+    # TT/EE relative to their own peak: TE crosses zero, so a pointwise
+    # relative error there is meaningless.
+    for name in ("ClTT", "ClEE", "ClTE"):
+        a = np.asarray(getattr(sync, name))
+        b = np.asarray(getattr(conf, name))
+        err = np.abs(b - a).max() / np.abs(a).max()
+        print(f"gauge {name} max err / peak: {err:.3e}")
+        assert err <= 0.01, f"{name} is gauge dependent: {err:.3e}"

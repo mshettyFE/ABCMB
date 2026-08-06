@@ -252,7 +252,7 @@ def _random_state(key):
     them. Each total therefore carries the powers of k and aH that put its
     contribution at the same magnitude as ``k^2 eta``.
     """
-    from abcmb.gauges import FluidTotals
+    from abcmb.gauges import AllSpeciesTotals
 
     k_key, a_key, aH_key, y_key, t_key = jax.random.split(key, 5)
     k = float(10 ** jax.random.uniform(k_key, minval=-3.0, maxval=0.0))
@@ -266,7 +266,7 @@ def _random_state(key):
         "a": a,
         "aH": aH,
         "metric_y": metric_y,
-        "totals": FluidTotals(rd * ref, rt * ref * k**2 / aH, rs * ref),
+        "totals": AllSpeciesTotals(rd * ref, rt * ref * k**2 / aH, rs * ref),
     }
 
 

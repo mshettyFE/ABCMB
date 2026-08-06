@@ -31,3 +31,21 @@ def lcdm_model():
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         return Model(custom_knob=1)
+
+
+@pytest.fixture(scope="session")
+def full_background_pair(lcdm_model):
+    """
+    ``(Background, derived params, species_list)`` for the shared LCDM model.
+
+    Session-scoped because building it runs the HyRex recombination solve;
+    treat the Background as read-only.
+    """
+    import equinox as eqx
+
+    params = lcdm_model.add_derived_parameters({})
+    pre = lcdm_model.get_BG_pre_recomb(params)
+    recomb_inputs = pre.make_recomb_inputs(lcdm_model.RecModel, params)
+    recomb_out = eqx.filter_jit(lcdm_model.RecModel)((recomb_inputs, params))
+    BG = lcdm_model.get_BG(params, pre, recomb_out)
+    return BG, params, lcdm_model.species_list
