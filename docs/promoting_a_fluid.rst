@@ -2,58 +2,59 @@ Promoting a notebook fluid into ABCMB
 =====================================
 
 The `fluids tutorial <https://github.com/TonyZhou729/ABCMB/blob/main/example_notebooks/ABCMB_Fluids.ipynb>`_
-shows how to prototype a new species in a notebook: subclass a fluid base
-class, pass it via ``user_species``, and feed its parameters through the open
-``params`` dict. That workflow is deliberately frictionless — but the fluid
-lives outside ABCMB's machinery. This guide walks through promoting a matured
-fluid into the package proper.
+shows how to make a new species in a notebook. You make a subclass of a fluid
+base class. You give it to ``user_species``. You put its parameters in the open
+``params`` dict. That method is quick, but the fluid stays outside the ABCMB
+machinery. This page shows how to move a mature fluid into the package.
 
-What promotion buys
--------------------
+What promotion gives you
+------------------------
 
-While your fluid is notebook-only, its parameters are *passthrough*: they work,
-but every run warns ``unrecognized parameter``, nothing validates or documents
-them, and they are invisible to the static type checker. Promotion upgrades the
-fluid to first-class:
+A notebook fluid has *passthrough* parameters. They operate correctly, but each
+run gives an ``unrecognized parameters`` warning. ABCMB does not check them or
+document them. The static type checker does not see them.
 
-* **Validation** — typos in parameter names get "did you mean" suggestions;
-  values get bounds/kind checks.
-* **Documentation** — the parameters appear in ``abcmb --list-params``,
-  ``defaults.toml``, and the API docs; the class appears in the
-  :mod:`abcmb.species` reference automatically.
-* **Static checking** — the parameters join the generated ``Params`` TypedDict,
-  so pyright catches key typos in code that uses them.
-* **Reproducibility** — config-file and CLI runs can use the fluid (a TOML
-  cannot carry a notebook class), and saved run files replay instead of
-  failing the species drift check.
+Promotion gives you these four items:
+
+* **Validation.** A wrong parameter name gets a "did you mean" message. Values
+  get bounds checks and type checks.
+* **Documentation.** The parameters go into ``abcmb --list-params``, into
+  ``defaults.toml``, and into the API documentation. The class goes into the
+  :mod:`abcmb.species` reference.
+* **Static checking.** The parameters go into the generated ``Params``
+  TypedDict. Pyright then finds wrong keys in code that uses them.
+* **Reproducibility.** Config files and the CLI can use the fluid, because a
+  TOML file cannot hold a notebook class. Saved run files replay correctly.
 
 Step 1: move the class into the ``abcmb/species/`` package
 -----------------------------------------------------------
 
-Copy the class from the notebook into a new module under ``abcmb/species/``
-(one file per species; base classes live in ``base.py``), and re-export it in
-``abcmb/species/__init__.py`` (import + ``__all__`` entry). Coupled fluids
-find their partners at runtime by name — ``args.find("Photon",
-StandardFluid)`` — never import a sibling species module.
+Copy the class from the notebook into a new module in ``abcmb/species/``. Use
+one file for each species. The base classes stay in ``base.py``. Then re-export
+the class in ``abcmb/species/__init__.py``. Add an import and an ``__all__``
+entry.
 
-The base-class contracts are enforced, so an incomplete promotion fails loudly
-rather than subtly:
+A coupled fluid finds its partner by name at run time. Use
+``args.find("Photon", StandardFluid)``. Do not import a different species
+module.
 
-* ``name`` and ``is_matter`` are abstract — declare both as class attributes
-  (a missing one raises at instantiation; ``BackgroundFluid`` already declares
-  ``is_matter = False``, so background-only fluids need only a name). ``name``
-  must be unique (``populate_species`` rejects duplicates).
-* ``num_equations`` has no default — declare it as a class attribute or in
-  ``__init__`` (``BackgroundFluid`` already declares 0). It must match the
-  size of your ``y_ini``/``y_prime`` arrays; ABCMB cross-checks this at
-  compile time.
-* ``y_prime`` receives the metric's contribution as a
-  :class:`~abcmb.species.MetricSources` bundle rather than as raw metric
-  variables. This is a **transcription table**: whichever gauge your derivation
-  is written in, map its metric terms onto the three slots and ABCMB evaluates
-  them correctly. (ABCMB integrates in synchronous gauge; you do not need to
-  convert your equations by hand, and you must not — the slots already carry
-  the right values.)
+ABCMB enforces the base-class contracts. An incomplete promotion therefore
+fails immediately:
+
+* ``name`` and ``is_matter`` are abstract. Declare both as class attributes. An
+  absent attribute raises an error at instantiation. ``BackgroundFluid``
+  declares ``is_matter = False`` already, so a background fluid needs only a
+  name. Each ``name`` must be unique, because ``populate_species`` rejects a
+  duplicate.
+* ``num_equations`` has no default. Declare it as a class attribute, or set it
+  in ``__init__``. ``BackgroundFluid`` declares 0 already. The value must agree
+  with the length of your ``y_ini`` array and your ``y_prime`` array. ABCMB
+  checks this at compile time.
+* ``y_prime`` gets the metric contribution as a
+  :class:`~abcmb.metric.MetricSources` bundle. It does not get the metric
+  variables. Use this table to transcribe your equations. Your derivation can
+  use either gauge. Put each metric term in the correct slot, and ABCMB
+  calculates it correctly.
 
   .. list-table::
      :header-rows: 1
@@ -68,41 +69,74 @@ rather than subtly:
      * - :math:`(h' + 6\eta')/2` (synchronous) or :math:`0` (Newtonian)
        - ``sources.shear``
 
-  Both textbook forms collapse to the same line — this is the skeleton the two
-  derivations already share, not a new formalism::
+  The two textbook forms become the same line. This is the structure that the
+  two derivations share::
 
       # newtonian paper:   delta' = -(1+w)(theta - 3 phi') - 3H(cs2-w) delta
       # synchronous paper: delta' = -(1+w)(theta + h'/2)   - 3H(cs2-w) delta
       delta_prime = -(1 + w) * (theta / aH + sources.continuity) - 3 * (cs2 - w) * delta
 
-  Because ABCMB integrates in synchronous gauge, ``sources.euler`` is
-  identically zero — no Euler equation carries a metric source there. Write it
-  anyway if your derivation has one: it costs nothing, it documents where the
-  term belongs, and it is what makes the transcription faithful to your source.
+  .. warning::
 
-  Initial conditions are *not* covered by this. ``y_ini`` must currently be
-  written in synchronous-gauge variables (the shared series in
-  :mod:`~abcmb.species.adiabatic_ics` are normalized to :math:`\eta = 1`
-  superhorizon). Unlike the equations, that conversion cannot be done at the
-  species level — it depends on the total stress-energy — so a fluid whose ICs
-  were derived in another gauge needs care here.
-* Set ``is_neutrino = True`` only if the species belongs in the neutrino
-  sector for the :math:`N_{\mathrm{eff}}` / :math:`R_\nu` accounting
-  (free-streaming, neutrino-like radiation). The default ``False`` is correct
-  for tightly-coupled dark radiation.
-* If the fluid *replaces* a default species (e.g. a dark-energy variant), it
-  competes with the LCDM set under ``use_LCDM_species=False``. The names
-  ``Baryon`` and ``Photon`` are structural (the baryon-photon coupling and
-  recombination look them up); a replacement for either must keep the name.
+     **Write each slot that your derivation has.** ``sources.euler`` is always
+     zero in the synchronous gauge. A fluid that omits it is correct in that
+     gauge, and wrong in the newtonian gauge. No synchronous test finds this
+     error. The same risk applies to ``sources.shear``, which is always zero in
+     the newtonian gauge.
 
-Keep any notebook-era ``sys.path`` hacks out; inside the package, use relative
-imports (``from . import constants as cnst``).
+     :func:`~abcmb.species.gauge_source_omissions` finds the omission. Run it on
+     your species list. See Step 4.
 
-Step 2: declare the parameters (and options) in the schema
-----------------------------------------------------------
+  Initial conditions are different. The transformation between the gauges uses
+  the *total* stress-energy, so a species cannot do it alone. Declare the gauge
+  of your initial conditions, and ABCMB does the transformation:
 
-This is the step that converts passthrough parameters into declared ones. Add
-one :class:`~abcmb.inputs.schema.Spec` row per parameter in ``abcmb/inputs/schema.py``:
+  .. code-block:: python
+
+     class MyFluid(StandardFluid):
+         ic_gauge = GaugeName.SYNCHRONOUS   # or GaugeName.NEWTONIAN
+
+  This declaration is mandatory for a fluid that writes its own ``y_ini``.
+  ``populate_species`` raises an error without it. The attribute has a default
+  value, so an omission is otherwise silent. ABCMB then reads the initial
+  conditions in the wrong gauge. The error is the :math:`\alpha` shift, and
+  nothing raises. Initial conditions from
+  :mod:`~abcmb.species.adiabatic_ics` are synchronous.
+
+  ``ic_gauge`` is the only gauge-dependent attribute of a fluid. It is a
+  statement about ``y_ini`` only. Do not branch on it. The fluid API cannot
+  tell you the gauge of the model. This is deliberate, and it is why one
+  ``y_prime`` is correct in each gauge.
+
+  :meth:`~abcmb.species.Fluid.y_ini_shift` does the transformation.
+  :class:`~abcmb.species.StandardFluid` implements it for the delta, theta and
+  sigma layout, and uses your own ``w``. A subclass of ``StandardFluid``
+  therefore needs no work. A direct subclass of
+  :class:`~abcmb.species.Fluid` must supply the method, if its ``ic_gauge`` can
+  disagree with the run. ``populate_species`` raises an error at construction if
+  the method is absent.
+
+  The series in :mod:`~abcmb.species.adiabatic_ics` use the synchronous gauge,
+  with the normalization :math:`\eta = 1` above the horizon. ``SYNCHRONOUS`` is
+  the default for this reason.
+* Set ``is_neutrino = True`` only for a species in the neutrino sector. This
+  flag controls the :math:`N_{\mathrm{eff}}` and :math:`R_\nu` accounting. Use
+  it for free-streaming radiation. The default ``False`` is correct for
+  tightly-coupled dark radiation.
+* A fluid that replaces a default species competes with the LCDM set. Set
+  ``use_LCDM_species=False`` in that case. The names ``Baryon`` and ``Photon``
+  are structural, because the baryon-photon coupling and the recombination code
+  find them by name. A replacement must keep the same name.
+
+Remove the notebook ``sys.path`` code. Inside the package, use relative imports
+such as ``from . import constants as cnst``.
+
+Step 2: declare the parameters and the options in the schema
+------------------------------------------------------------
+
+This step makes passthrough parameters into declared parameters. Add one
+:class:`~abcmb.inputs.schema.Spec` row for each parameter in
+``abcmb/inputs/schema.py``:
 
 .. code-block:: python
 
@@ -115,29 +149,30 @@ one :class:`~abcmb.inputs.schema.Spec` row per parameter in ``abcmb/inputs/schem
        bounds=(0.0, None),
    ),
 
-Fields worth knowing:
+These fields are important:
 
-* ``default`` — used when the user omits the key. If the parameter should
-  *only* exist when the user supplies it (its absence carries meaning, like
-  ``Neff``), use the ``UNSET`` sentinel instead of a value.
-* ``group`` — controls where the parameter appears in ``--list-params`` and
-  ``defaults.toml``; add a new ``Group`` member if none fits. 
-  Purely for --list-params human readability reason (parameters get flattened in the end regardless of grouping)
-* ``bounds`` / ``choices`` — non-fatal validation (warns, never raises).
-* ``aliases`` — accept alternative names (e.g. CLASS conventions).
+* ``default`` gives the value when the user omits the key. Some parameters must
+  exist only when the user supplies them, because the absence has a meaning.
+  ``Neff`` is an example. Use the ``UNSET`` sentinel for these.
+* ``group`` sets the position of the parameter in ``--list-params`` and in
+  ``defaults.toml``. Add a new ``Group`` member if no member fits. The group
+  controls readability only, because ABCMB flattens the parameters.
+* ``bounds`` and ``choices`` give a warning for a bad value. They never raise
+  an error.
+* ``aliases`` accepts other names, such as the CLASS names.
 
-**Options work the same way.** If your fluid reads precision knobs from
-``options`` in ``__init__`` (a hierarchy cutoff, a grid setting), declare them
-as ``Spec`` rows in ``OPTION_SCHEMA`` instead. The dividing rule:
+Options use the same method. Your fluid can read precision values from
+``options`` in ``__init__``, such as a hierarchy cutoff or a grid setting.
+Declare these as ``Spec`` rows in ``OPTION_SCHEMA``. Use this rule:
 
-* ``PARAM_SCHEMA`` — differentiable physics inputs that vary between calls of
-  the same model (they live in the ``params`` dict, as JAX arrays).
-* ``OPTION_SCHEMA`` — static configuration that shapes the computation
-  (``int``/``bool``/``str``/fixed floats); changing one means a new ``Model``
-  and a recompile.
+* ``PARAM_SCHEMA`` holds differentiable physics inputs. These change between
+  calls to the same model. They stay in the ``params`` dict, as JAX arrays.
+* ``OPTION_SCHEMA`` holds static configuration. These are ``int``, ``bool``,
+  ``str`` or fixed float values. A change makes a new ``Model`` and a new
+  compilation.
 
-Config files route keys to the right table by *name*, so users never need to
-know which schema a key lives in.
+Config files send each key to the correct table by name. A user therefore does
+not need to know the schema of a key.
 
 Step 3: regenerate the schema artifacts
 ---------------------------------------
@@ -146,61 +181,83 @@ Step 3: regenerate the schema artifacts
 
    ./check.sh fix
 
-This regenerates the two committed, schema-derived artifacts:
-``defaults.toml`` (your parameters appear with defaults and doc comments) and
-``abcmb/inputs/_schema_types.py`` (the ``Params`` TypedDict gains your keys, which is
-what activates static key checking for them). A staleness test fails CI if
-this step is forgotten.
+This command regenerates the two schema artifacts in the repository.
+``defaults.toml`` gets your parameters, with their defaults and their
+descriptions. ``abcmb/inputs/_schema_types.py`` gets your keys in the ``Params``
+TypedDict, which starts the static key checks. A staleness test fails in CI if
+you omit this step.
 
 Step 4: tests
 -------------
 
-At minimum:
+Write these tests as a minimum:
 
-* Add the species to the trait assertions in ``pytests/test_species.py``
-  (``is_neutrino`` flags) and, if it has interesting construction logic, an
-  instantiation test. The abstract-attribute and vector-layout contracts give
-  you structural checking for free at first trace.
-* Run the :mod:`abcmb.species.validation` diagnostics on your fluid with
-  real params. :func:`~abcmb.species.continuity_residuals` checks
-  ``d(rho)/dlna = -3(rho+P)``, tying your ``rho`` and ``P`` to each other;
-  for a perturbed fluid with standard adiabatic ICs,
-  :func:`~abcmb.species.adiabatic_ic_residuals` checks your ``y_ini``
-  against the photon's (3/4 ratio for matter, 1 for radiation) and
-  :func:`~abcmb.species.ic_scaling_residuals` checks the powers of k and
-  tau individually. No reference values needed: correct implementations
-  sit at ~1e-14, mistakes at O(1).
-* If a reference computation exists (e.g. the same model in CLASS), extend the
-  accuracy test — this is the only check that validates the *physics*.
+* Add the species to the trait assertions in ``pytests/test_species.py``, for
+  the ``is_neutrino`` flag. Add an instantiation test if the construction is
+  complex. The abstract-attribute contract and the vector-layout contract give
+  you structural checks at the first trace.
+* Run the :mod:`abcmb.species.validation` diagnostics on your fluid, with real
+  parameters. :func:`~abcmb.species.continuity_residuals` checks that
+  ``d(rho)/dlna = -3(rho+P)``, and therefore connects your ``rho`` to your
+  ``P``. For a perturbed fluid with standard adiabatic initial conditions,
+  :func:`~abcmb.species.adiabatic_ic_residuals` compares your ``y_ini`` with
+  the photon values. The ratio is 3/4 for matter and 1 for radiation.
+  :func:`~abcmb.species.ic_scaling_residuals` checks each power of k and tau.
+  These functions need no reference values. A correct implementation gives
+  approximately 1e-14. An error gives a result of order 1.
+* Run :func:`~abcmb.species.gauge_source_omissions` on your species list. It
+  reports two terms that are always zero in the synchronous gauge. The terms
+  are ``sources.euler``, and the ``theta/aH`` of the fluid in the continuity
+  equation. The function reports a term only if your fluid does not read it.
+  No synchronous test finds these omissions. An empty dict is the correct
+  result.
 
-Step 5: run everything
-----------------------
+  This function has a limit. It is a *presence* check. It differentiates your
+  ``y_prime`` with respect to each slot. A measurement used five versions of one
+  fluid: correct, term absent, sign wrong, value halved, and value multiplied by
+  a wrong factor. The function reported the second version only. A term with a
+  wrong value therefore passes.
+  :func:`~abcmb.species.metric_source_dependence` shows which slots each fluid
+  reads.
+* :func:`~abcmb.species.adiabatic_ic_residuals` also validates a non-default
+  ``ic_gauge``. It moves the initial conditions of each fluid into one gauge
+  before it compares them. A wrong ``ic_gauge`` gives a residual of order 1.
+  The Einstein constraints cannot find this error, because they stay correct
+  when one species uses the wrong gauge.
+* Run the accuracy test in each gauge. The observables must agree. This
+  comparison uses each source slot.
+* Extend the accuracy test if a reference calculation exists, such as the same
+  model in CLASS. This test is the only check of the physics.
+
+Step 5: run the full check
+--------------------------
 
 .. code-block:: bash
 
    ./check.sh
 
-Lint, format check, pyright (your parameters are now typo-checked wherever
-they are used), the docs build (your class is now in the rendered
-:mod:`abcmb.species` reference — including the tutorial's live-source cells,
-which display the installed code and need no editing), and the test suite.
+This command runs the lint check, the format check and pyright. Pyright now
+finds wrong parameter names in each place that uses them. The command then
+builds the documentation, which now contains your class in the
+:mod:`abcmb.species` reference. The tutorial cells show the installed code, so
+they need no changes. The command then runs the test suite.
 
 Pitfalls
 --------
 
-* **Fields are static.** Anything stored as an ``eqx.field`` (or read from
-  ``options``) triggers recompilation when changed. A quantity that varies
-  across a parameter scan belongs in ``params``, not in a field.
-* **Static vs traced conditionals.** Branch on *fields* (``num_equations``,
-  flags) with plain Python ``if``; branch on *traced values* (anything from
-  ``params`` or ``y``) with ``jnp.where``.
-* **Old configs keep working.** Once the parameter is declared, config files
-  that supplied it stop warning and start validating; nothing breaks — but a
-  previously-tolerated out-of-bounds value will now warn.
-* **Name changes are breaking.** Coupling lookups (``args.find``), saved run
-  files (the species drift check), and coupled fluids all key on ``name`` —
-  treat a promoted fluid's name as API (see :doc:`public_api`).
-* **Options are read-only after resolution.** Never stash computed values into
-  the ``options`` dict — return them explicitly instead — and annotate any new
-  function taking options with ``options: "Options"`` so the type checker
-  enforces this.
+* **Fields are static.** A value in an ``eqx.field``, or a value from
+  ``options``, causes a new compilation after a change. Put a value that changes
+  during a parameter scan in ``params``, not in a field.
+* **Static conditionals and traced conditionals are different.** Use a Python
+  ``if`` for a *field*, such as ``num_equations`` or a flag. Use ``jnp.where``
+  for a *traced value*, such as a value from ``params`` or from ``y``.
+* **Old config files continue to operate.** A declared parameter stops the
+  warning and starts the validation. Nothing fails. An out-of-range value now
+  gives a warning.
+* **A name change breaks other code.** The coupling lookups (``args.find``),
+  the saved run files and the coupled fluids use ``name``. Treat the name of a
+  promoted fluid as API. See :doc:`public_api`.
+* **Options are read-only after resolution.** Do not put calculated values into
+  the ``options`` dict. Return them instead. Annotate each new function that
+  takes options with ``options: "Options"``, so that the type checker enforces
+  this rule.

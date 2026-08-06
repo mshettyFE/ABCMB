@@ -28,6 +28,8 @@ without notice.
 
    abcmb.background
    abcmb.perturbations
+   abcmb.gauges
+   abcmb.metric
    abcmb.spectrum
    abcmb.inputs.schema
    abcmb.inputs.derived

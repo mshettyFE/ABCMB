@@ -54,7 +54,7 @@ def j(l, x):
 
 
 class SpectrumSolver(eqx.Module):
-    """
+    r"""
     CMB angular power spectrum computation.
 
     Computes temperature and polarization angular power spectra by
@@ -98,8 +98,8 @@ class SpectrumSolver(eqx.Module):
     --------
     primordial_spectrum : Compute primordial power spectrum
     Pk_lin : Compute linear matter power spectrum
-    get_Cl : Compute angular power spectra for multiple ℓ
-    Cl_one_ell : Compute angular power spectrum for single ℓ
+    get_Cl : Compute angular power spectra for multiple :math:`\ell`
+    Cl_one_ell : Compute angular power spectrum for single :math:`\ell`
     integrand_T0 : Compute SW+ISW temperature source integrand
     integrand_T1 : Compute ISW temperature source integrand
     integrand_T2 : Compute polarization temperature source integrand
@@ -661,7 +661,7 @@ class SpectrumSolver(eqx.Module):
         return lax.cond(self.lensing, get_lensed_Cls, get_unlensed_Cls)
 
     def Cl_one_ell(self, idx, PT, BG, params):
-        """
+        r"""
         Computes angular power spectrum for single multipole.
 
         Integrates transfer functions over wavenumber.
@@ -669,7 +669,7 @@ class SpectrumSolver(eqx.Module):
         Parameters:
         -----------
         idx : int
-            Index into bessel_l_tab for multipole ℓ
+            Index into bessel_l_tab for multipole :math:`\ell`
         PT : perturbations.PerturbationTable
             Perturbation evolution table
         BG : background.Background
@@ -680,7 +680,7 @@ class SpectrumSolver(eqx.Module):
         Returns:
         --------
         tuple
-            (C_ℓ^TT, C_ℓ^TE, C_ℓ^EE) angular power spectra
+            :math:`(C_\ell^{TT}, C_\ell^{TE}, C_\ell^{EE})` angular power spectra
         """
         l = bessel_l_tab[idx]
         k_axis = self.k_axis_transfer
@@ -841,7 +841,7 @@ class SpectrumSolver(eqx.Module):
         xs = (sourceT0, sourceT1, sourceT2, sourceE, aH_1d, tau, weights)
         # jax.checkpoint on the scan body: during reverse AD, body intermediates
         # are not saved — the body is re-executed on the backward pass. Kills
-        # the ~21 GiB (Nell, Nlna, Nk) integrand rematerialisation; adds ~2× on
+        # the ~21 GiB (Nell, Nlna, Nk) integrand rematerialisation; adds ~2x on
         # this scan's compute, a small fraction of SS wall time.
         (transferT0, transferT1, transferT2, transferE), _ = lax.scan(
             jax.checkpoint(scan_step), init, xs

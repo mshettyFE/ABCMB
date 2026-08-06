@@ -51,8 +51,8 @@ if TYPE_CHECKING:
 
 
 def _grav(a: ArrayLike) -> Array:
-    """
-    The :math:`4\\pi G a^2 / c^2` prefactor shared by every Einstein equation
+    r"""
+    The :math:`4\pi G a^2 / c^2` prefactor shared by every Einstein equation
     below, in ABCMB's units (rho in eV cm^-3, lengths in Mpc).
     """
     return 4.0 * jnp.pi * cnst.G * jnp.asarray(a) ** 2 / cnst.c_Mpc_over_s**2

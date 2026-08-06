@@ -44,6 +44,7 @@ Three pedagogical example notebooks demonstrating how to use ABCMB are available
 
    modules
    public_api
+   choosing_a_gauge
    promoting_a_fluid
    FAQ
 

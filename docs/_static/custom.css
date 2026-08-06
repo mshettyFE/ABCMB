@@ -37,3 +37,30 @@ dd > p > strong:only-child {
     font-size: 108%;
     color: #2980b9;
 }
+/* ============================================
+   CROSS-REFERENCE LINKS (Blue, like prose links)
+   ============================================ */
+
+/*
+ * A :class:/:func:/:mod:/:meth: reference renders as a <code class="xref">
+ * inside an <a>. The theme colours every code literal #e74c3c (red), which
+ * wins over the #2980b9 it gives links, so a cross-reference reads as inline
+ * code rather than as something clickable.
+ *
+ * The theme's rule is `.rst-content code.literal` (specificity 0,2,1);
+ * `.rst-content a code.xref` is 0,2,2 and therefore wins without !important.
+ * Setting the colour on the <code> also keeps the a:visited purple (#9b59b6)
+ * off cross-references, since the child's own colour beats the inherited one.
+ */
+.rst-content a code.xref,
+.rst-content a code.xref span.pre,
+.rst-content a tt.xref,
+.rst-content a tt.xref span.pre {
+    color: #2980b9;
+}
+
+/* Match the theme's link hover, so a cross-reference behaves like a link. */
+.rst-content a:hover code.xref,
+.rst-content a:hover code.xref span.pre {
+    color: #3091d1;
+}

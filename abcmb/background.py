@@ -321,9 +321,9 @@ class BackgroundPreRecomb(eqx.Module):
         lna: Float[Array, ""] | float,
         params: "Params",
     ) -> Float[Array, ""]:
-        """
-        Calculates R = 3ρ_b/(4ρ_γ), the ratio of baryon to photon
-        energy densities that appears in baryon drag calculations.
+        r"""
+        Calculates :math:`R = 3\rho_b/(4\rho_\gamma)`, the ratio of baryon to
+        photon energy densities that appears in baryon drag calculations.
 
         Returns:
         --------
@@ -489,7 +489,8 @@ class Background(BackgroundPreRecomb):
         r"""
         Compute Thomson scattering time.
 
-        Calculates Thomson scattering time scale \tau_c = 1/(a × ne × \sigma T).
+        Calculates the Thomson scattering time scale
+        :math:`\tau_c = 1/(a\, n_e\, \sigma_T)`.
 
         Returns:
             Thomson scattering time (units: Mpc)
@@ -503,7 +504,7 @@ class Background(BackgroundPreRecomb):
         r"""
         Tabulate optical depth from given scale factor to today.
 
-        Integrates d\kappa/d(ln a) = -1/(\tau* c × aH) backwards from today
+        Integrates :math:`d\kappa/d\ln a = -1/(\tau_c\, aH)` backwards from today
         to compute optical depth \kappa (a) = \int [a to 1] d\kappa/da' da'.
 
         Returns:
@@ -548,7 +549,8 @@ class Background(BackgroundPreRecomb):
         r"""
         Compute visibility function.
 
-        Calculates visibility function g(x) = -aH(x) × \kappa'(x) × exp(-\kappa(x))
+        Calculates the visibility function
+        :math:`g(x) = -aH(x)\, \kappa'(x)\, e^{-\kappa(x)}`,
         where x = ln a. Represents probability that a CMB
         photon observed today was last scattered at time x.
 
@@ -597,7 +599,7 @@ class Background(BackgroundPreRecomb):
         r"""
         Tabulate baryon optical depth.
 
-        Integrates d\kappa_d/d(ln a) = -1/(\tau_c × aH × R) backwards from today
+        Integrates :math:`d\kappa_d/d\ln a = -1/(\tau_c\, aH\, R)` backwards from today
         to compute baryon optical depth including drag effects.
 
         Returns:
@@ -678,10 +680,10 @@ class Background(BackgroundPreRecomb):
         return cast(Array, solution.ys)
 
     def z_d(self, params: "Params") -> Float[Array, ""]:
-        """
+        r"""
         Compute baryon decoupling redshift.
 
-        Finds redshift where κ_d = 1 as estimate of when baryons
+        Finds the redshift where :math:`\kappa_d = 1`, as an estimate of when baryons
         decouple from photons.
 
         Returns:

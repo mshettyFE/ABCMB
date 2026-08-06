@@ -183,9 +183,10 @@ class PerturbationEvolver(eqx.Module):
         return PT
 
     def get_starting_time(self, k: ArrayLike, args: EvolverArgs) -> Float[Array, ""]:
-        """
+        r"""
         Determine the integration starting time for one mode.
-        Thresholds: τc/τh < ``R_tc`` (tight coupling) and τh/τk < ``R_large``
+        Thresholds: :math:`\tau_c/\tau_h` < ``R_tc`` (tight coupling) and
+        :math:`\tau_h/\tau_k` < ``R_large``
         (superhorizon); the earlier of the two crossings wins.
         """
         BG, params = args
@@ -193,15 +194,15 @@ class PerturbationEvolver(eqx.Module):
         # 1) Starting lna
         lna_start_range = jnp.linspace(-20.0, -10.0, 10000)
 
-        # a) τc/τh  →  f1(lna) = BG.tau_c * BG.aH
+        # a) tau_c/tau_h  ->  f1(lna) = BG.tau_c * BG.aH
         f1 = vmap(lambda l: BG.tau_c(l, params) * BG.aH(l, params))(lna_start_range)
-        # invert f1(lna) = thr1  →  lna = interp(thr1, f1, lna_range)
+        # invert f1(lna) = thr1  ->  lna = interp(thr1, f1, lna_range)
         # jnp.interp, not ABCMBTools.fast_interp: the inversion abscissae
         # (f1, f2) are non-uniform over ~4 decades, so fast_interp's
         # uniform-grid indexing would misplace crossings by several e-folds
         # in lna
         lna1 = jnp.interp(self.options["R_tc"], f1, lna_start_range)
-        # b) τh/τk  →  f2(lna) = k / BG.aH
+        # b) tau_h/tau_k  ->  f2(lna) = k / BG.aH
         f2 = k / vmap(lambda l: BG.aH(l, params))(lna_start_range)
         # invert f2(lna) = thr2
         lna2 = jnp.interp(self.options["R_large"], f2, lna_start_range)
@@ -213,7 +214,7 @@ class PerturbationEvolver(eqx.Module):
     def initial_conditions_one_k(
         self, k: ArrayLike, lna_ini: ArrayLike, args: EvolverArgs
     ) -> Float[Array, " n_y"]:
-        """
+        r"""
         Compute initial conditions for perturbation evolution.
 
         Sets up initial values for metric and fluid perturbations at early times
@@ -224,11 +225,13 @@ class PerturbationEvolver(eqx.Module):
 
         Notes:
         ------
-        Uses CLASS-style initial conditions with metric perturbations h and η.
+        Uses CLASS-style initial conditions with the metric perturbations
+        :math:`h` and :math:`\eta`.
         Assumes adiabatic initial conditions with vanishing isocurvature modes.
 
         Follows CLASS's ordering (``perturbations_initial_conditions``): the
-        adiabatic series are anchored in synchronous gauge, the generator α is
+        adiabatic series are anchored in synchronous gauge, the generator
+        :math:`\alpha` is
         read off the resulting total stress-energy, and everything that needs
         it is then transformed. Each fluid declares the gauge its own ``y_ini``
         is written in (:attr:`~.species.Fluid.ic_gauge`) and is shifted only if
@@ -484,7 +487,7 @@ class PerturbationEvolver(eqx.Module):
 
 
 class PerturbationTable(eqx.Module):
-    """
+    r"""
     Interpolatable table of perturbation evolution.
 
     Stores perturbation modes as 2D arrays over wavenumber and time
@@ -506,13 +509,15 @@ class PerturbationTable(eqx.Module):
     theta_b_prime : array
         Baryon velocity derivative (backward-calculated from Boltzmann equations)
     metric : MetricHistory
-        The gauge's metric history on the same grid: (η, h', η', α, α') in
-        synchronous gauge, (φ, ψ, φ') in conformal Newtonian gauge.
+        The gauge's metric history on the same grid:
+        :math:`(\eta, h', \eta', \alpha, \alpha')` in synchronous gauge,
+        :math:`(\phi, \psi, \phi')` in conformal Newtonian gauge.
     species_perturbations : dict
         Named perturbation arrays for each species, keyed by species name.
         Each value is a dict {quantity: array(Nlna, Nk)}.
         Species with no perturbations (e.g. dark energy) map to {}.
-        These are in the gauge named by ``gauge`` -- δ and θ are gauge
+        These are in the gauge named by ``gauge`` -- :math:`\delta` and
+        :math:`\theta` are gauge
         dependent, materially so above the horizon.
     gauge : Gauge
         The gauge this table was integrated in.
