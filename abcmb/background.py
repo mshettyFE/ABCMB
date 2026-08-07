@@ -158,6 +158,13 @@ class BackgroundPreRecomb(eqx.Module):
             H_arr=vmap(self.H, in_axes=[0, None])(lna_axis, params),
         )
 
+    @staticmethod
+    def _total(quantities: 'list[Float[Array, ""]]') -> Float[Array, ""]:
+        """
+        Sum a per-species quantity over the species axis.
+        """
+        return jnp.sum(jnp.asarray(quantities), axis=0)
+
     def rho_tot(
         self,
         lna: Float[Array, ""] | float,
@@ -169,8 +176,21 @@ class BackgroundPreRecomb(eqx.Module):
         Returns:
             Total energy density (units: eV cm^{-3})
         """
-        return jnp.sum(
-            jnp.asarray([s.rho(lna, params) for s in self.species_list]), axis=0
+        return self._total([s.rho(lna, params) for s in self.species_list])
+
+    def rho_matter(
+        self,
+        lna: Float[Array, ""] | float,
+        params: "Params",
+    ) -> Float[Array, ""]:
+        """
+        Compute the energy density of all species flagged ``is_matter``.
+
+        Returns:
+            Matter energy density (units: eV cm^{-3})
+        """
+        return self._total(
+            [s.rho(lna, params) for s in self.species_list if s.is_matter]
         )
 
     def P_tot(
@@ -184,9 +204,7 @@ class BackgroundPreRecomb(eqx.Module):
         Returns:
             Total pressure (units: eV cm^{-3})
         """
-        return jnp.sum(
-            jnp.asarray([s.P(lna, params) for s in self.species_list]), axis=0
-        )
+        return self._total([s.P(lna, params) for s in self.species_list])
 
     def H(
         self,

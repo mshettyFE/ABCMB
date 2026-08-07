@@ -196,13 +196,7 @@ class SpectrumSolver(eqx.Module):
         """
         Linear power spectrum of a density contrast table, at (z, k).
 
-        The species-independent half of Pk_lin/Pk_cb: interpolate ``delta``
-        onto the requested redshift and wavenumbers, then square it against
-        the primordial spectrum.
-
         Returns:
-        --------
-        float or array
             P(k, z), units Mpc^3
         """
         lna = -jnp.log(1.0 + z)
@@ -262,38 +256,22 @@ class SpectrumSolver(eqx.Module):
         PT: "PerturbationTable",
         BG: "Background",
         params: "Params",
-    ):
+    ) -> Float[Array, " k"]:
         """
         Computes the lensing power spectrum at wavenumbers k and redshift z.
         Eq.(3.15) in astro-ph/0601594
 
-        Parameters:
-        -----------
-        k : float or array
-            Wavenumber (Mpc^{-1})
-        lna : float
-            Scale factor
-        PT : perturbations.PerturbationTable
-            Perturbation evolution table
-        BG : background.Background
-            Background cosmology module
-        params : dict
-            Dictionary of input and derived parameters
-
         Returns:
-        --------
-        float or array
+        array
             Lensing matter power spectrum P(k, z), dimensionless.
         """
         a = jnp.exp(lna)
         z = 1.0 / a - 1.0
         aH = BG.aH(lna, params)
 
-        Omega_m = params["omega_m"] / params["h"] ** 2
-        Omega_L = params["omega_Lambda"] / params["h"] ** 2
-
-        # Matter fraction over time after equality. 1 at early times and becomes Om0 today.
-        Om = (Omega_m * (1.0 + z) ** 3) / ((Omega_m * (1.0 + z) ** 3) + Omega_L)
+        # Omega_m(a) = rho_m / rho_crit(a), and rho_crit = rho_tot because the
+        # density budget is closed flat.
+        Om = BG.rho_matter(lna, params) / BG.rho_tot(lna, params)
 
         Pk = self.Pk_lin(k, z, PT, params)  # Mpc^3
 
