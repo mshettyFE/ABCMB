@@ -1,4 +1,5 @@
 import os
+from typing import TYPE_CHECKING
 
 import equinox as eqx
 import jax
@@ -10,6 +11,9 @@ from jaxtyping import Array
 from scipy.special import roots_legendre
 
 from . import ABCMBTools as tools
+
+if TYPE_CHECKING:
+    from .inputs._schema_types import Options
 
 file_dir = os.path.dirname(__file__)
 
@@ -60,6 +64,14 @@ class SpectrumSolver(eqx.Module):
     Computes temperature and polarization angular power spectra by
     integrating transfer functions over wavenumber and time.
 
+    Every scalar knob is read from ``options`` at its use site (``l_min``,
+    ``l_max``, ``lensing``, ``k_pivot``, ``scale_sw``, ``scale_isw``,
+    ``scale_dop``, ``scale_pol``, ``lna_lensing_points``), the same
+    convention as :class:`~.perturbations.PerturbationEvolver`; only the
+    grids that must be built once -- the k axes and the multipole axes --
+    are fields. Build ``options`` with
+    :func:`~.inputs.schema.resolve_options` so the defaults are filled in.
+
     Attributes:
     -----------
     ells : Array
@@ -67,7 +79,7 @@ class SpectrumSolver(eqx.Module):
     lensing_ells : Array
         Internal contiguous multipole axis, always anchored at ell=2 (a
         contract of the Wigner-d recurrences and the ``[ells - 2]`` output
-        slicing); extends 500 past ellmax when lensing is on. Used for the
+        slicing); extends 500 past ``l_max`` when lensing is on. Used for the
         raw-Cl spline in both the lensed and unlensed paths.
     lensing_ells_indices : Array
         Indices into bessel_l_tab for the lensing_ells raw-Cl evaluations
@@ -75,22 +87,16 @@ class SpectrumSolver(eqx.Module):
         Used for lensing, the Gauss-Legendre quadrature roots for the correlation function -> Cl integral.
     lensing_ws : Array
         Used for lensing, the Gauss-Legendre quadrature weights for the correlation function -> Cl integral.
-    lensing : bool
-        Whether to include gravitational lensing effects
     k_axis_transfer : Array
-        Wavenumber grid for transfer function integration (units: Mpc^{-1})
+        Wavenumber grid for transfer function integration (units: Mpc^{-1}).
+        Required, no default: build with
+        ``model_setup.get_k_axis_transfer``.
     k_axis_Pk_output : Array
-        Wavenumber grid for matter power spectrum output (units: Mpc^{-1})
-    k_pivot : float
-        Pivot scale for primordial power spectrum normalization (units: Mpc^{-1}, default: 0.05)
-    scale_sw : float
-        Multiplicative factor for Sachs-Wolfe term (default: 1.0)
-    scale_isw : float
-        Multiplicative factor for integrated Sachs-Wolfe term (default: 1.0)
-    scale_dop : float
-        Multiplicative factor for Doppler term (default: 1.0)
-    scale_pol : float
-        Multiplicative factor for polarization term (default: 1.0)
+        Wavenumber grid for matter power spectrum output (units: Mpc^{-1}).
+        Required, no default: build with
+        ``model_setup.get_k_axis_perturbations``.
+    options : Options
+        The resolved options dictionary.
 
     Methods:
     --------
@@ -111,59 +117,47 @@ class SpectrumSolver(eqx.Module):
     lensing_mus: Array
     lensing_ws: Array
 
-    lensing: bool
-
     k_axis_transfer: Array
     k_axis_Pk_output: Array
 
-    k_pivot: float = 0.05  # In 1/Mpc
-    scale_sw: float = 1.0
-    scale_isw: float = 1.0
-    scale_dop: float = 1.0
-    scale_pol: float = 1.0
-    lna_lensing_points: int = eqx.field(default=500, static=True)
+    options: "Options" = eqx.field(default_factory=dict)
 
     def __init__(
         self,
-        ellmin=2,
-        ellmax=2500,
-        lensing=False,
-        k_axis_transfer=jnp.geomspace(1.0e-4, 0.4, 2500),
-        k_axis_Pk_output=jnp.geomspace(1.0e-4, 0.1, 100),
-        k_pivot=0.05,
-        scale_sw=1,
-        scale_isw=1,
-        scale_dop=1,
-        scale_pol=1,
-        lna_lensing_points=500,
+        k_axis_transfer,
+        k_axis_Pk_output,
+        options: "Options",
     ):
         """
         Initialize CMB spectrum solver.
 
-        Sets up multipole range, lensing configuration, and source term switches
-        for computing angular power spectra.
+        Unlike :class:`~.perturbations.PerturbationEvolver`, which reads
+        everything from ``options`` at the use site and needs no constructor,
+        the multipole axes have to be built once, eagerly: their lengths set
+        every downstream array shape, and the Gauss-Legendre roots come from
+        scipy, which cannot run under a trace. Everything else is left in
+        ``options`` and read where it is used.
 
         Parameters:
         -----------
-        ellmin : int, optional
-            Minimum multipole (default: 2)
-        ellmax : int, optional
-            Maximum multipole (default: 2500)
-        lensing : bool, optional
-            Whether to include lensing effects (default: True)
-        k_pivot : float, optional
-            Pivot scale for primordial spectrum (units: Mpc^{-1}, default: 0.05)
-        scale_sw : float, optional
-            Switch for Sachs-Wolfe term (default: 1)
-        scale_isw : float, optional
-            Switch for integrated Sachs-Wolfe term (default: 1)
-        scale_dop : float, optional
-            Switch for Doppler term (default: 1)
-        scale_pol : float, optional
-            Switch for polarization term (default: 1)
+        k_axis_transfer : Array
+            Transfer-integration k grid, from
+            ``model_setup.get_k_axis_transfer`` (units: Mpc^{-1})
+        k_axis_Pk_output : Array
+            P(k) output k grid, from
+            ``model_setup.get_k_axis_perturbations`` (units: Mpc^{-1})
+        options : Options
+            Resolved options dictionary (see
+            :func:`~.inputs.schema.resolve_options`). Read here: ``l_min``,
+            ``l_max``, ``lensing``.
         """
 
-        self.lensing = lensing
+        self.options = options
+        self.k_axis_transfer = k_axis_transfer
+        self.k_axis_Pk_output = k_axis_Pk_output
+
+        ellmin = options["l_min"]
+        ellmax = options["l_max"]
 
         if ellmin < 2:
             raise ValueError(
@@ -181,7 +175,7 @@ class SpectrumSolver(eqx.Module):
         # and get_Cl's `[self.ells - 2]` output slicing assumes it. ellmin
         # only selects which ells are returned.
         anchor_idx = jnp.where(bessel_l_tab <= 2)[0][-1]
-        if self.lensing:
+        if options["lensing"]:
             lensing_ellmax = ellmax + 500
             lensing_ell_idx_max = jnp.where(bessel_l_tab >= lensing_ellmax)[0][0]
             self.lensing_ells = jnp.arange(2, lensing_ellmax + 1)
@@ -202,16 +196,6 @@ class SpectrumSolver(eqx.Module):
             self.lensing_mus = jnp.array([0.0])  # Not needed
             self.lensing_ws = jnp.array([0.0])  # Not needed
 
-        self.k_axis_transfer = k_axis_transfer
-        self.k_axis_Pk_output = k_axis_Pk_output
-        self.k_pivot = k_pivot
-
-        self.scale_sw = scale_sw
-        self.scale_isw = scale_isw
-        self.scale_dop = scale_dop
-        self.scale_pol = scale_pol
-        self.lna_lensing_points = lna_lensing_points
-
     def primordial_spectrum(self, k, params):
         """
         Compute primordial curvature power spectrum.
@@ -230,7 +214,7 @@ class SpectrumSolver(eqx.Module):
         """
         return (
             params["A_s"]
-            * (k / self.k_pivot) ** (params["n_s"] - 1.0)
+            * (k / self.options["k_pivot"]) ** (params["n_s"] - 1.0)
             * (2 * jnp.pi**2 / k**3)
         )
 
@@ -379,7 +363,7 @@ class SpectrumSolver(eqx.Module):
         # the where-mask that nan_to_num secretly expands to, which
         # propagated through BG.tau. Fix: substitute lna_safe everywhere,
         # then mask the result to 0 at the boundary.
-        lna_axis = jnp.linspace(BG.lna_rec, 0.0, self.lna_lensing_points)
+        lna_axis = jnp.linspace(BG.lna_rec, 0.0, self.options["lna_lensing_points"])
         lna_floor = lna_axis[-2]
 
         def integrand_func(lna):
@@ -655,7 +639,7 @@ class SpectrumSolver(eqx.Module):
                 ee_unlensed[self.ells - 2],
             )
 
-        return lax.cond(self.lensing, get_lensed_Cls, get_unlensed_Cls)
+        return lax.cond(self.options["lensing"], get_lensed_Cls, get_unlensed_Cls)
 
     def Cl_one_ell(self, idx, PT, BG, params):
         r"""
@@ -735,9 +719,9 @@ class SpectrumSolver(eqx.Module):
         # Source terms. Identical in both gauges: what differs is entirely
         # inside metric_src (see gauges.CMBMetricSources).
         sourceT0 = (
-            self.scale_sw * g * (delta_g / 4.0 + metric_src.sw_potential)
-            + self.scale_isw * metric_src.isw_T0
-            + self.scale_dop
+            self.options["scale_sw"] * g * (delta_g / 4.0 + metric_src.sw_potential)
+            + self.options["scale_isw"] * metric_src.isw_T0
+            + self.options["scale_dop"]
             * (
                 aH
                 * (
@@ -747,9 +731,9 @@ class SpectrumSolver(eqx.Module):
             )
         )
 
-        sourceT1 = self.scale_isw * metric_src.isw_T1
+        sourceT1 = self.options["scale_isw"] * metric_src.isw_T1
 
-        sourceT2 = self.scale_pol * g * (2 * sigma_g + Gg0 + Gg2) / 8.0
+        sourceT2 = self.options["scale_pol"] * g * (2 * sigma_g + Gg0 + Gg2) / 8.0
 
         sourceE = jnp.sqrt(6) * g * (2 * sigma_g + Gg0 + Gg2) / 8.0
 
@@ -852,7 +836,7 @@ class SpectrumSolver(eqx.Module):
             4.0
             * jnp.pi
             * params["A_s"]
-            * (k_axis / self.k_pivot) ** (params["n_s"] - 1.0)
+            * (k_axis / self.options["k_pivot"]) ** (params["n_s"] - 1.0)
             * transferT**2
             / k_axis
         )
@@ -860,7 +844,7 @@ class SpectrumSolver(eqx.Module):
             4.0
             * jnp.pi
             * params["A_s"]
-            * (k_axis / self.k_pivot) ** (params["n_s"] - 1.0)
+            * (k_axis / self.options["k_pivot"]) ** (params["n_s"] - 1.0)
             * transferT
             * transferE
             / k_axis
@@ -869,7 +853,7 @@ class SpectrumSolver(eqx.Module):
             4.0
             * jnp.pi
             * params["A_s"]
-            * (k_axis / self.k_pivot) ** (params["n_s"] - 1.0)
+            * (k_axis / self.options["k_pivot"]) ** (params["n_s"] - 1.0)
             * transferE**2
             / k_axis
         )

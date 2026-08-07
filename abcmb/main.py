@@ -143,17 +143,9 @@ class Model(eqx.Module):
         # Intialize spectrum solver
         k_axis_transfer = model_setup.get_k_axis_transfer(options, k_min, k_max_cmb)
         self.SS = spectrum.SpectrumSolver(
-            options["l_min"],
-            options["l_max"],
-            options["lensing"],
             k_axis_transfer,
             k_axis_Pk_output,
-            k_pivot=options["k_pivot"],
-            scale_sw=options["scale_sw"],
-            scale_isw=options["scale_isw"],
-            scale_dop=options["scale_dop"],
-            scale_pol=options["scale_pol"],
-            lna_lensing_points=options["lna_lensing_points"],
+            options,
         )
 
         # Initialize recombination model.
