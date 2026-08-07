@@ -7,7 +7,7 @@ import jax.numpy as jnp
 import numpy as np
 from interpax import CubicSpline
 from jax import config, grad, lax, vmap
-from jaxtyping import Array
+from jaxtyping import Array, Float, Int
 from scipy.special import roots_legendre
 
 from . import ABCMBTools as tools
@@ -23,14 +23,18 @@ config.update("jax_enable_x64", True)
 # phi2 = (3 j_l'' + j_l)/2 -- the three line-of-sight source kernels. Each has
 # its own x grid because each is tabulated over its own function's support.
 # Regenerate with abcmb/_generators/bessel_tables.py (scipy-based, offline).
+
+# Axis names: num_ell_tab is the *tabulated* ell grid
+# num_x is the per-kernel sample count along its own x grid.
 _bessel_tables = np.load(file_dir + "/data/bessel_tables.npz")
-bessel_l_tab = jnp.array(_bessel_tables["l"], dtype="int")
-xphi0_tab = jnp.array(_bessel_tables["xphi0"])
-phi0_tab = jnp.array(_bessel_tables["phi0"])
-xphi1_tab = jnp.array(_bessel_tables["xphi1"])
-phi1_tab = jnp.array(_bessel_tables["phi1"])
-xphi2_tab = jnp.array(_bessel_tables["xphi2"])
-phi2_tab = jnp.array(_bessel_tables["phi2"])
+
+bessel_l_tab: Int[Array, " num_ell_tab"] = jnp.array(_bessel_tables["l"], dtype="int")
+xphi0_tab: Float[Array, "num_x num_ell_tab"] = jnp.array(_bessel_tables["xphi0"])
+phi0_tab: Float[Array, "num_x num_ell_tab"] = jnp.array(_bessel_tables["phi0"])
+xphi1_tab: Float[Array, "num_x num_ell_tab"] = jnp.array(_bessel_tables["xphi1"])
+phi1_tab: Float[Array, "num_x num_ell_tab"] = jnp.array(_bessel_tables["phi1"])
+xphi2_tab: Float[Array, "num_x num_ell_tab"] = jnp.array(_bessel_tables["xphi2"])
+phi2_tab: Float[Array, "num_x num_ell_tab"] = jnp.array(_bessel_tables["phi2"])
 
 # Commit the tables to the default device (the accelerator when there is one,
 # otherwise a no-op)
@@ -83,10 +87,6 @@ class SpectrumSolver(eqx.Module):
         Wavenumber grid for transfer function integration (units: Mpc^{-1}).
         Required, no default: build with
         ``model_setup.get_k_axis_transfer``.
-    k_axis_Pk_output : Array
-        Wavenumber grid for matter power spectrum output (units: Mpc^{-1}).
-        Required, no default: build with
-        ``model_setup.get_k_axis_perturbations``.
     options : Options
         The resolved options dictionary.
 
@@ -102,42 +102,30 @@ class SpectrumSolver(eqx.Module):
     integrand_E : Compute E-mode polarization source integrand
     """
 
-    ells: Array
+    ells: Int[Array, " num_ell"]
 
-    lensing_ells: Array
-    lensing_ells_indices: Array
-    lensing_mus: Array
-    lensing_ws: Array
+    lensing_ells: Int[Array, " num_lensing_ell"]
+    lensing_ells_indices: Int[Array, " num_raw_ell"]
+    lensing_mus: Float[Array, " num_mu"]
+    lensing_ws: Float[Array, " num_mu"]
 
-    k_axis_transfer: Array
-    k_axis_Pk_output: Array
+    k_axis_transfer: Float[Array, " n_k_transfer"]
 
     options: "Options" = eqx.field(default_factory=dict)
 
     def __init__(
         self,
-        k_axis_transfer,
-        k_axis_Pk_output,
+        k_axis_transfer: Float[Array, " n_k_transfer"],
         options: "Options",
     ):
         """
         Initialize CMB spectrum solver.
-
-        Unlike :class:`~.perturbations.PerturbationEvolver`, which reads
-        everything from ``options`` at the use site and needs no constructor,
-        the multipole axes have to be built once, eagerly: their lengths set
-        every downstream array shape, and the Gauss-Legendre roots come from
-        scipy, which cannot run under a trace. Everything else is left in
-        ``options`` and read where it is used.
 
         Parameters:
         -----------
         k_axis_transfer : Array
             Transfer-integration k grid, from
             ``model_setup.get_k_axis_transfer`` (units: Mpc^{-1})
-        k_axis_Pk_output : Array
-            P(k) output k grid, from
-            ``model_setup.get_k_axis_perturbations`` (units: Mpc^{-1})
         options : Options
             Resolved options dictionary (see
             :func:`~.inputs.schema.resolve_options`). Read here: ``l_min``,
@@ -146,7 +134,6 @@ class SpectrumSolver(eqx.Module):
 
         self.options = options
         self.k_axis_transfer = k_axis_transfer
-        self.k_axis_Pk_output = k_axis_Pk_output
 
         ellmin = options["l_min"]
         ellmax = options["l_max"]

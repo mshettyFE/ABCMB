@@ -77,6 +77,8 @@ class Model(eqx.Module):
     options: "Options"
     raw_options: dict
 
+    k_axis_Pk_output: Float[Array, " n_k_pk"]
+
     species_list: tuple[Fluid, ...]
 
     PArthENoPE_CLASS_table: (
@@ -142,9 +144,9 @@ class Model(eqx.Module):
 
         # Intialize spectrum solver
         k_axis_transfer = model_setup.get_k_axis_transfer(options, k_min, k_max_cmb)
+        self.k_axis_Pk_output = k_axis_Pk_output
         self.SS = spectrum.SpectrumSolver(
             k_axis_transfer,
-            k_axis_Pk_output,
             options,
         )
 
@@ -296,8 +298,8 @@ class Model(eqx.Module):
         l = self.SS.ells
 
         # Compute linear matter power spectrum
-        Pk = self.SS.Pk_lin(self.SS.k_axis_Pk_output, 0.0, PT, params)
-        k = self.SS.k_axis_Pk_output
+        Pk = self.SS.Pk_lin(self.k_axis_Pk_output, 0.0, PT, params)
+        k = self.k_axis_Pk_output
 
         # Package
         output = Output(Cls[0], Cls[1], Cls[2], Pk, l, k, BG, PT, params)

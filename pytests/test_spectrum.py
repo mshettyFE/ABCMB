@@ -17,13 +17,13 @@ from abcmb.spectrum import SpectrumSolver
 
 
 def _solver(**option_overrides):
-    """A SpectrumSolver on schema defaults, with the k axes left unused.
+    """A SpectrumSolver on schema defaults, with the k axis left unused.
 
     The multipole-axis contracts tested here depend only on ``l_min``,
-    ``l_max`` and ``lensing``, so the k grids are placeholders.
+    ``l_max`` and ``lensing``, so the k grid is a placeholder.
     """
     options = resolve_options(dict(option_overrides))
-    return SpectrumSolver(jnp.array([0.1]), jnp.array([0.1]), options)
+    return SpectrumSolver(jnp.array([0.1]), options)
 
 
 def test_ellmin_below_2_raises():
@@ -33,7 +33,7 @@ def test_ellmin_below_2_raises():
     options = resolve_options({"l_max": 100})
     options["l_min"] = 1
     with pytest.raises(ValueError, match="l_min"):
-        SpectrumSolver(jnp.array([0.1]), jnp.array([0.1]), options)
+        SpectrumSolver(jnp.array([0.1]), options)
 
 
 def test_ellmin_below_2_rejected_by_schema():
