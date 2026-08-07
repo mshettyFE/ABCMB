@@ -64,8 +64,6 @@ class SpectrumSolver(eqx.Module):
     -----------
     ells : Array
         Multipole values for output power spectra
-    ells_indices : Array
-        Indices into bessel_l_tab corresponding to ells
     lensing_ells : Array
         Internal contiguous multipole axis, always anchored at ell=2 (a
         contract of the Wigner-d recurrences and the ``[ells - 2]`` output
@@ -107,7 +105,6 @@ class SpectrumSolver(eqx.Module):
     """
 
     ells: Array
-    ells_indices: Array
 
     lensing_ells: Array
     lensing_ells_indices: Array
@@ -175,9 +172,7 @@ class SpectrumSolver(eqx.Module):
             )
 
         self.ells = jnp.arange(ellmin, ellmax + 1)
-        ell_idx_min = jnp.where(bessel_l_tab <= ellmin)[0][-1]
         ell_idx_max = jnp.where(bessel_l_tab >= ellmax)[0][0]
-        self.ells_indices = jnp.arange(ell_idx_min, ell_idx_max + 1)
 
         # The internal contiguous ell axis (lensing_ells) is anchored at
         # exactly 2 regardless of ellmin: the Wigner-d recurrences
@@ -636,10 +631,12 @@ class SpectrumSolver(eqx.Module):
         )
 
         # Cubic spline for smooth Cl over user requested ells
-        lensing_ells = bessel_l_tab[self.lensing_ells_indices]
-        tt_unlensed = CubicSpline(lensing_ells, tt_raw, check=False)(self.lensing_ells)
-        te_unlensed = CubicSpline(lensing_ells, te_raw, check=False)(self.lensing_ells)
-        ee_unlensed = CubicSpline(lensing_ells, ee_raw, check=False)(self.lensing_ells)
+        # The raw Cls live on the sparse tabulated ell grid; spline them up
+        # onto the dense contiguous self.lensing_ells axis.
+        sampled_ells = bessel_l_tab[self.lensing_ells_indices]
+        tt_unlensed = CubicSpline(sampled_ells, tt_raw, check=False)(self.lensing_ells)
+        te_unlensed = CubicSpline(sampled_ells, te_raw, check=False)(self.lensing_ells)
+        ee_unlensed = CubicSpline(sampled_ells, ee_raw, check=False)(self.lensing_ells)
 
         def get_lensed_Cls():
             tt_lensed, te_lensed, ee_lensed = self.lensed_Cls(
