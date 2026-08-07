@@ -164,6 +164,29 @@ OPTION_SCHEMA = (
     ),
     Spec("lensing", False, bool, "Compute lensed spectra.", group=Group.OUTPUT),
     Spec(
+        "lensing_buffer",
+        500,
+        int,
+        "Multipoles of unlensed spectrum computed beyond l_max. The lensing "
+        "convolution mixes neighbouring multipoles, so lensed Cls at l_max "
+        "need unlensed power above it.",
+        group=Group.OUTPUT,
+        aliases=("delta_l_max",),
+        bounds=(0, None),
+    ),
+    Spec(
+        "lensing_quadrature_buffer",
+        70,
+        int,
+        "Extra Gauss-Legendre nodes above the padded l range for the "
+        "correlation function -> Cl integral. At least 1 is required for "
+        "exactness (the integrand reaches degree 2*l_max); more is precision "
+        "margin.",
+        group=Group.OUTPUT,
+        aliases=("num_mu_minus_lmax",),
+        bounds=(1, None),
+    ),
+    Spec(
         "k_max",
         0.5,
         float,

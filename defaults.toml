@@ -46,10 +46,12 @@ gauge = "synchronous"    # (option, str) Gauge the perturbations are integrated 
 input_tau_reion = true  # (option, bool) Reionization input mode: tau_reion (True) vs z_reion (False).
 
 [output]
-l_min = 2        # (option, int) Minimum multipole for output spectra.
-l_max = 2500     # (option, int) Maximum multipole for output spectra.
-lensing = false  # (option, bool) Compute lensed spectra.
-k_max = 0.5      # (option, float) Maximum wavenumber for the matter power spectrum (Mpc^-1).
+l_min = 2                       # (option, int) Minimum multipole for output spectra.
+l_max = 2500                    # (option, int) Maximum multipole for output spectra.
+lensing = false                 # (option, bool) Compute lensed spectra.
+lensing_buffer = 500            # (option, int) Multipoles of unlensed spectrum computed beyond l_max. The lensing convolution mixes neighbouring multipoles, so lensed Cls at l_max need unlensed power above it.
+lensing_quadrature_buffer = 70  # (option, int) Extra Gauss-Legendre nodes above the padded l range for the correlation function -> Cl integral. At least 1 is required for exactness (the integrand reaches degree 2*l_max); more is precision margin.
+k_max = 0.5                     # (option, float) Maximum wavenumber for the matter power spectrum (Mpc^-1).
 
 [bbn]
 bbn_type = ""                          # (option, str) BBN backend: '' / 'Table' (sBBN table) or 'linx' (LINX).

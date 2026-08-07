@@ -14,6 +14,8 @@ class Options(TypedDict):
     l_min: int
     l_max: int
     lensing: bool
+    lensing_buffer: int
+    lensing_quadrature_buffer: int
     k_max: float
     bbn_type: str
     linx_reaction_net: str

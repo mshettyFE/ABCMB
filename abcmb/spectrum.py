@@ -13,13 +13,16 @@ from scipy.special import roots_legendre
 from . import ABCMBTools as tools
 
 if TYPE_CHECKING:
-    from .inputs._schema_types import Options
+    from .background import Background
+    from .inputs._schema_types import Options, Params
+    from .perturbations import PerturbationTable
 
 file_dir = os.path.dirname(__file__)
 
 config.update("jax_enable_x64", True)
 
 MINIMUM_ALLOWED_L = 2
+
 
 # Tabulated spherical-Bessel kernels over (x, l): phi0 = j_l, phi1 = j_l',
 # phi2 = (3 j_l'' + j_l)/2 -- the three line-of-sight source kernels. Each has
@@ -95,20 +98,14 @@ class SpectrumSolver(eqx.Module):
 
     Attributes:
     -----------
-    ells : Array
-        Multipole values for output power spectra
     evaluated_ells : Array
         Internal contiguous multipole axis, always anchored at ell=2 (a
         contract of the Wigner-d recurrences and the ``[ells - 2]`` output
-        slicing); extends 500 past ``l_max`` when lensing is on. Used for the
+        slicing); extends 'lensing_buffer' past ``l_max`` when lensing is on. Used for the
         raw-Cl spline in both the lensed and unlensed paths.
     sampled_ells : Array
         The tabulated multipoles the raw Cls are actually solved at -- a
         sparse subset of bessel_l_tab, splined onto evaluated_ells by get_Cl.
-    lensing_mus : Array
-        Used for lensing, the Gauss-Legendre quadrature roots for the correlation function -> Cl integral.
-    lensing_ws : Array
-        Used for lensing, the Gauss-Legendre quadrature weights for the correlation function -> Cl integral.
     k_axis_transfer : Array
         Wavenumber grid for transfer function integration (units: Mpc^{-1}).
         Required, no default: build with
@@ -118,7 +115,6 @@ class SpectrumSolver(eqx.Module):
 
     Methods:
     --------
-    primordial_spectrum : Compute primordial power spectrum
     Pk_lin : Compute linear matter power spectrum
     get_Cl : Compute angular power spectra for multiple :math:`\ell`
     Cl_one_ell : Compute angular power spectrum for single :math:`\ell`
@@ -137,9 +133,6 @@ class SpectrumSolver(eqx.Module):
     # Knots of the cubic splines
     sampled_ells: Int[Array, " num_raw_ell"]
 
-    lensing_mus: Float[Array, " num_mu"]
-    lensing_ws: Float[Array, " num_mu"]
-
     k_axis_transfer: Float[Array, " n_k_transfer"]
 
     options: "Options" = eqx.field(default_factory=dict)
@@ -151,16 +144,6 @@ class SpectrumSolver(eqx.Module):
     ):
         """
         Initialize CMB spectrum solver.
-
-        Parameters:
-        -----------
-        k_axis_transfer : Array
-            Transfer-integration k grid, from
-            ``model_setup.get_k_axis_transfer`` (units: Mpc^{-1})
-        options : Options
-            Resolved options dictionary (see
-            :func:`~.inputs.schema.resolve_options`). Read here: ``l_min``,
-            ``l_max``, ``lensing``.
         """
 
         self.options = options
@@ -177,44 +160,23 @@ class SpectrumSolver(eqx.Module):
 
         if options["lensing"]:
             # Pad l support of spline to account for lensing convolution
-            lensing_ellmax = self.ellmax + 500
+            lensing_ellmax = self.ellmax + options["lensing_buffer"]
             self.evaluated_ells = jnp.arange(MINIMUM_ALLOWED_L, lensing_ellmax + 1)
             self.sampled_ells = bessel_l_tab[
                 : _n_cols_through(
                     lensing_ellmax,
-                    "l_max + 500 (lensing extends the internal ell axis)",
+                    "l_max + lensing_buffer (lensing extends the internal ell axis)",
                 )
             ]
-            num_mu = lensing_ellmax + 70
-            # Fine to use scipy function here, since num_mu is static
-            # Hence, by the time the HLO graph is constructed, mu_np and w_np are
-            # constant arrays (re: they don't contribute nodes to the HLO graph)
-            mu_np, w_np = roots_legendre(num_mu)
-            mu, w = jnp.asarray(mu_np), jnp.asarray(w_np)
-            # self.lensing_theta = jnp.linspace(0., jnp.pi/16., lensing_ellmax // 8) # Size recommended by CLASS
-            self.lensing_mus = jnp.concatenate((mu, jnp.array([1.0])))
-            self.lensing_ws = jnp.concatenate((w, jnp.array([0.0])))
         else:
             self.evaluated_ells = jnp.arange(MINIMUM_ALLOWED_L, self.ellmax + 1)
             self.sampled_ells = bessel_l_tab[: _n_cols_through(self.ellmax, "l_max")]
-            # self.lensing_theta = jnp.array([0.]) # Not needed
-            self.lensing_mus = jnp.array([0.0])  # Not needed
-            self.lensing_ws = jnp.array([0.0])  # Not needed
 
-    def primordial_spectrum(self, k, params):
+    def _primordial_spectrum(self, k: Float[Array, " k"], params) -> Float[Array, " k"]:
         """
         Compute primordial curvature power spectrum.
 
-        Parameters:
-        -----------
-        k : float or array
-            Wavenumber (units: Mpc^{-1})
-        params : dict
-            Dictionary of input and derived parameters
-
         Returns:
-        --------
-        float or array
             Primordial power spectrum P_R(k), units Mpc^3
         """
         return (
@@ -223,80 +185,84 @@ class SpectrumSolver(eqx.Module):
             * (2 * jnp.pi**2 / k**3)
         )
 
-    def Pk_lin(self, k, z, PT, params):
+    def _Pk_from(
+        self,
+        delta: Float[Array, "n_lna n_k"],
+        k: Float[Array, " k"],
+        z: float,
+        PT: "PerturbationTable",
+        params: "Params",
+    ) -> Float[Array, " k"]:
+        """
+        Linear power spectrum of a density contrast table, at (z, k).
+
+        The species-independent half of Pk_lin/Pk_cb: interpolate ``delta``
+        onto the requested redshift and wavenumbers, then square it against
+        the primordial spectrum.
+
+        Returns:
+        --------
+        float or array
+            P(k, z), units Mpc^3
+        """
+        lna = -jnp.log(1.0 + z)
+
+        # vmapped interpolation over Nk (columns of the 2D arrays)
+        interp_over_lna = jax.vmap(
+            lambda y: jnp.interp(lna, PT.lna, y),
+            in_axes=1,  # loop over columns
+        )
+
+        delta_lna = interp_over_lna(delta)  # shape (Nk,)
+
+        # now interpolate over k
+        delta_k = jnp.interp(k, PT.k, delta_lna)
+
+        return delta_k**2 * self._primordial_spectrum(k, params)
+
+    def Pk_lin(
+        self,
+        k: Float[Array, " k"],
+        z: float,
+        PT: "PerturbationTable",
+        params: "Params",
+    ) -> Float[Array, " k"]:
         """
         Compute linear matter power spectrum at wavenumbers k and redshift z.
 
-        Parameters:
-        -----------
-        k : float or array
-            Wavenumber (Mpc^{-1})
-        z : float
-            Redshift to evaluate.
-        PT : perturbations.PerturbationTable
-            Perturbation evolution table
-        params : dict
-            Dictionary of input and derived parameters
+        Includes every species counted as matter (``is_matter``), massive
+        neutrinos among them; see :meth:`Pk_cb` for the baryon+CDM variant.
 
         Returns:
-        --------
-        float or array
             Linear matter power spectrum P(k, z), units Mpc^3
         """
+        return self._Pk_from(PT.delta_m, k, z, PT, params)
 
-        lna = -jnp.log(1.0 + z)
-
-        # vmapped interpolation over Nk (columns of the 2D arrays)
-        interp_over_lna = jax.vmap(
-            lambda y: jnp.interp(lna, PT.lna, y),
-            in_axes=1,  # loop over columns
-        )
-
-        delta_m_lna = interp_over_lna(PT.delta_m)  # shape (Nk,)
-
-        # now interpolate over k
-        delta_m = jnp.interp(k, PT.k, delta_m_lna)
-
-        return delta_m**2 * self.primordial_spectrum(k, params)
-
-    def Pk_cb(self, k, z, PT, params):
+    def Pk_cb(
+        self,
+        k: Float[Array, " k"],
+        z: float,
+        PT: "PerturbationTable",
+        params: "Params",
+    ) -> Float[Array, " k"]:
         """
-        Compute linear Baryon+DarkMatter power spectrum at wavenumbers k and redshift z.
-        Does not include any other massive species present.
-
-        Parameters:
-        -----------
-        k : float or array
-            Wavenumber (Mpc^{-1})
-        z : float
-            Redshift to evaluate.
-        PT : perturbations.PerturbationTable
-            Perturbation evolution table
-        params : dict
-            Dictionary of input and derived parameters
+        Compute linear Baryon+DarkMatter power spectrum at wavenumbers k and
+        redshift z. Does not include any other massive species present --
+        notably massive neutrinos, which :meth:`Pk_lin` does include.
 
         Returns:
-        --------
-        float or array
             Linear Baryon+DarkMatter power spectrum P_cb(k, z), units Mpc^3
         """
+        return self._Pk_from(PT.delta_cb, k, z, PT, params)
 
-        lna = -jnp.log(1.0 + z)
-
-        # vmapped interpolation over Nk (columns of the 2D arrays)
-        interp_over_lna = jax.vmap(
-            lambda y: jnp.interp(lna, PT.lna, y),
-            in_axes=1,  # loop over columns
-        )
-
-        delta_cb_lna = interp_over_lna(PT.delta_cb)
-
-        # now interpolate over k
-        delta_cb = jnp.interp(k, PT.k, delta_cb_lna)
-
-        return delta_cb**2 * self.primordial_spectrum(k, params)
-
-    def lensing_power_spectrum(self, k, lna, PT, BG, params):
+    def lensing_power_spectrum(
+        self,
+        k: Float[Array, " k"],
+        lna: float,
+        PT: "PerturbationTable",
+        BG: "Background",
+        params: "Params",
+    ):
         """
         Computes the lensing power spectrum at wavenumbers k and redshift z.
         Eq.(3.15) in astro-ph/0601594
@@ -414,13 +380,21 @@ class SpectrumSolver(eqx.Module):
         tuple
             (ClTT, ClTE, ClEE) lensed power spectra
         """
-        # CLASS samples angle uniformly
-        # 500 points is enough for lmax < 4000
-        # theta = jnp.linspace(0., jnp.pi/16., 500)
-
-        # Flip mu so that mu is in ascending order, works better for trapz.
-        # mu = jnp.flip(jnp.cos(self.lensing_theta))
-        mu = self.lensing_mus
+        # num_mu is static (it comes from options), so scipy is fine
+        # -- by the time the HLO graph is built,
+        # mu and w are constant arrays contributing no nodes.
+        #
+        # The appended mu = 1 node carries weight 0: it extends the grid to
+        # the endpoint for the Wigner-d recurrences without altering the
+        # quadrature.
+        num_mu = (
+            self.ellmax
+            + self.options["lensing_buffer"]
+            + self.options["lensing_quadrature_buffer"]
+        )
+        mu_np, w_np = roots_legendre(num_mu)
+        mu = jnp.concatenate((jnp.asarray(mu_np), jnp.array([1.0])))
+        w = jnp.concatenate((jnp.asarray(w_np), jnp.array([0.0])))
 
         # Compute lensing Cl
         Clpp = self.lensing_Cl(ells, PT, BG, params)
@@ -579,7 +553,7 @@ class SpectrumSolver(eqx.Module):
         # ClTT = 2.*jnp.pi * jnp.trapezoid(ksi[:, None]*d00, mu, axis=0) + ClTT_unlensed
         # ClTE = 2.*jnp.pi * jnp.trapezoid(ksix[:, None]*d20, mu, axis=0) + ClTE_unlensed
         # ClEE = 1./2. * 2.*jnp.pi * jnp.trapezoid(ksip[:, None]*d22+ksim[:, None]*d2m2, mu, axis=0) + ClEE_unlensed
-        w = self.lensing_ws[:, None]
+        w = w[:, None]
         ClTT = 2 * jnp.pi * jnp.sum(ksi[:, None] * d00 * w, axis=0)
         ClTE = 2 * jnp.pi * jnp.sum(ksix[:, None] * d20 * w, axis=0)
         ClEE = (
@@ -592,18 +566,10 @@ class SpectrumSolver(eqx.Module):
 
         return (ClTT, ClTE, ClEE)
 
-    def get_Cl(self, PT, BG, params):
+    def get_Cl(self, PT: "PerturbationTable", BG: "Background", params: "Params"):
         """
         Compute angular power spectra for multiple multipoles.
 
-        Parameters:
-        -----------
-        PT : perturbations.PerturbationTable
-            Perturbation evolution table
-        BG : background.Background
-            Background cosmology module
-        params : dict
-            Dictionary of input and derived parameters
 
         Returns:
         --------
@@ -636,20 +602,12 @@ class SpectrumSolver(eqx.Module):
                 BG,
                 params,
             )
-            return (
-                tt_lensed[out],
-                te_lensed[out],
-                ee_lensed[out],
-            )
+            return (tt_lensed[out], te_lensed[out], ee_lensed[out])
 
         def get_unlensed_Cls():
-            return (
-                tt_unlensed[out],
-                te_unlensed[out],
-                ee_unlensed[out],
-            )
+            return (tt_unlensed[out], te_unlensed[out], ee_unlensed[out])
 
-        return lax.cond(self.options["lensing"], get_lensed_Cls, get_unlensed_Cls)
+        return get_lensed_Cls() if self.options["lensing"] else get_unlensed_Cls()
 
     def Cl_one_ell(self, l, PT, BG, params):
         r"""
