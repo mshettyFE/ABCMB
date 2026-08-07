@@ -295,7 +295,7 @@ class Model(eqx.Module):
 
         # Compute CMB power spectra
         Cls = self.SS.get_Cl(PT, BG, params)
-        l = self.SS.ells
+        l = jnp.arange(self.SS.ellmin, self.SS.ellmax + 1)
 
         # Compute linear matter power spectrum
         Pk = self.SS.Pk_lin(self.k_axis_Pk_output, 0.0, PT, params)

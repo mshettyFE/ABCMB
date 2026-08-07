@@ -19,6 +19,8 @@ file_dir = os.path.dirname(__file__)
 
 config.update("jax_enable_x64", True)
 
+MINIMUM_ALLOWED_L = 2
+
 # Tabulated spherical-Bessel kernels over (x, l): phi0 = j_l, phi1 = j_l',
 # phi2 = (3 j_l'' + j_l)/2 -- the three line-of-sight source kernels. Each has
 # its own x grid because each is tabulated over its own function's support.
@@ -28,13 +30,36 @@ config.update("jax_enable_x64", True)
 # num_x is the per-kernel sample count along its own x grid.
 _bessel_tables = np.load(file_dir + "/data/bessel_tables.npz")
 
+# Sorted sparse list of tabulated ell values
 bessel_l_tab: Int[Array, " num_ell_tab"] = jnp.array(_bessel_tables["l"], dtype="int")
+assert int(bessel_l_tab[0]) == MINIMUM_ALLOWED_L, (
+    f"bessel_l_tab must start at ell={MINIMUM_ALLOWED_L}"
+)
+
 xphi0_tab: Float[Array, "num_x num_ell_tab"] = jnp.array(_bessel_tables["xphi0"])
 phi0_tab: Float[Array, "num_x num_ell_tab"] = jnp.array(_bessel_tables["phi0"])
 xphi1_tab: Float[Array, "num_x num_ell_tab"] = jnp.array(_bessel_tables["xphi1"])
 phi1_tab: Float[Array, "num_x num_ell_tab"] = jnp.array(_bessel_tables["phi1"])
 xphi2_tab: Float[Array, "num_x num_ell_tab"] = jnp.array(_bessel_tables["xphi2"])
 phi2_tab: Float[Array, "num_x num_ell_tab"] = jnp.array(_bessel_tables["phi2"])
+
+
+def _n_cols_through(ell, what):
+    """
+    Number of leading ``bessel_l_tab`` columns needed to bracket ``ell``.
+
+    """
+    i = int(jnp.searchsorted(bessel_l_tab, ell, side="left"))
+    if i == bessel_l_tab.size:
+        raise ValueError(
+            f"{what} = {ell} exceeds the tabulated Bessel range "
+            f"(2..{int(bessel_l_tab[-1])}). Lower it, or regenerate "
+            f"abcmb/data/bessel_tables.npz with abcmb/_generators/bessel_tables.py."
+        )
+
+    # i stops just short of including l. +1 to gaurentee inclusion of ell
+    return i + 1
+
 
 # Commit the tables to the default device (the accelerator when there is one,
 # otherwise a no-op)
@@ -72,13 +97,14 @@ class SpectrumSolver(eqx.Module):
     -----------
     ells : Array
         Multipole values for output power spectra
-    lensing_ells : Array
+    evaluated_ells : Array
         Internal contiguous multipole axis, always anchored at ell=2 (a
         contract of the Wigner-d recurrences and the ``[ells - 2]`` output
         slicing); extends 500 past ``l_max`` when lensing is on. Used for the
         raw-Cl spline in both the lensed and unlensed paths.
-    lensing_ells_indices : Array
-        Indices into bessel_l_tab for the lensing_ells raw-Cl evaluations
+    sampled_ells : Array
+        The tabulated multipoles the raw Cls are actually solved at -- a
+        sparse subset of bessel_l_tab, splined onto evaluated_ells by get_Cl.
     lensing_mus : Array
         Used for lensing, the Gauss-Legendre quadrature roots for the correlation function -> Cl integral.
     lensing_ws : Array
@@ -102,10 +128,15 @@ class SpectrumSolver(eqx.Module):
     integrand_E : Compute E-mode polarization source integrand
     """
 
-    ells: Int[Array, " num_ell"]
+    # bounds of l for output multiple spectra
+    ellmin: int
+    ellmax: int
 
-    lensing_ells: Int[Array, " num_lensing_ell"]
-    lensing_ells_indices: Int[Array, " num_raw_ell"]
+    # L grid on which the spline is evaluated at
+    evaluated_ells: Int[Array, " num_lensing_ell"]
+    # Knots of the cubic splines
+    sampled_ells: Int[Array, " num_raw_ell"]
+
     lensing_mus: Float[Array, " num_mu"]
     lensing_ws: Float[Array, " num_mu"]
 
@@ -135,42 +166,37 @@ class SpectrumSolver(eqx.Module):
         self.options = options
         self.k_axis_transfer = k_axis_transfer
 
-        ellmin = options["l_min"]
-        ellmax = options["l_max"]
+        self.ellmin = options["l_min"]
+        self.ellmax = options["l_max"]
 
-        if ellmin < 2:
+        if self.ellmin < MINIMUM_ALLOWED_L:
             raise ValueError(
-                f"l_min must be >= 2 (the monopole and dipole are not "
-                f"computed, and bessel_l_tab starts at 2); got {ellmin}"
+                f"l_min must be >= {MINIMUM_ALLOWED_L} (the monopole and dipole are not "
+                f"computed, and bessel_l_tab starts at 2); got {self.ellmin}"
             )
 
-        self.ells = jnp.arange(ellmin, ellmax + 1)
-        ell_idx_max = jnp.where(bessel_l_tab >= ellmax)[0][0]
-
-        # The internal contiguous ell axis (lensing_ells) is anchored at
-        # exactly 2 regardless of ellmin: the Wigner-d recurrences
-        # (tools.d00/d1n/...) require consecutive ells starting at 2, the
-        # lensing correlation sums must run over the full multipole range,
-        # and get_Cl's `[self.ells - 2]` output slicing assumes it. ellmin
-        # only selects which ells are returned.
-        anchor_idx = jnp.where(bessel_l_tab <= 2)[0][-1]
         if options["lensing"]:
-            lensing_ellmax = ellmax + 500
-            lensing_ell_idx_max = jnp.where(bessel_l_tab >= lensing_ellmax)[0][0]
-            self.lensing_ells = jnp.arange(2, lensing_ellmax + 1)
-            self.lensing_ells_indices = jnp.arange(anchor_idx, lensing_ell_idx_max + 1)
-            # self.lensing_theta = jnp.linspace(0., jnp.pi/16., lensing_ellmax // 8) # Size recommended by CLASS
+            # Pad l support of spline to account for lensing convolution
+            lensing_ellmax = self.ellmax + 500
+            self.evaluated_ells = jnp.arange(MINIMUM_ALLOWED_L, lensing_ellmax + 1)
+            self.sampled_ells = bessel_l_tab[
+                : _n_cols_through(
+                    lensing_ellmax,
+                    "l_max + 500 (lensing extends the internal ell axis)",
+                )
+            ]
             num_mu = lensing_ellmax + 70
             # Fine to use scipy function here, since num_mu is static
             # Hence, by the time the HLO graph is constructed, mu_np and w_np are
             # constant arrays (re: they don't contribute nodes to the HLO graph)
             mu_np, w_np = roots_legendre(num_mu)
             mu, w = jnp.asarray(mu_np), jnp.asarray(w_np)
+            # self.lensing_theta = jnp.linspace(0., jnp.pi/16., lensing_ellmax // 8) # Size recommended by CLASS
             self.lensing_mus = jnp.concatenate((mu, jnp.array([1.0])))
             self.lensing_ws = jnp.concatenate((w, jnp.array([0.0])))
         else:
-            self.lensing_ells = jnp.arange(2, ellmax + 1)
-            self.lensing_ells_indices = jnp.arange(anchor_idx, ell_idx_max + 1)
+            self.evaluated_ells = jnp.arange(MINIMUM_ALLOWED_L, self.ellmax + 1)
+            self.sampled_ells = bessel_l_tab[: _n_cols_through(self.ellmax, "l_max")]
             # self.lensing_theta = jnp.array([0.]) # Not needed
             self.lensing_mus = jnp.array([0.0])  # Not needed
             self.lensing_ws = jnp.array([0.0])  # Not needed
@@ -337,11 +363,7 @@ class SpectrumSolver(eqx.Module):
         def chi(lna):
             return BG.tau0 - BG.tau(lna)
 
-        # The previous jnp.nan_to_num(integrand, nan=0.) here masked the
-        # forward NaN but left a 0*NaN cotangent in the backward through
-        # the where-mask that nan_to_num secretly expands to, which
-        # propagated through BG.tau. Fix: substitute lna_safe everywhere,
-        # then mask the result to 0 at the boundary.
+        # substitute lna_safe everywhere, then mask the result to 0 at the boundary.
         lna_axis = jnp.linspace(BG.lna_rec, 0.0, self.options["lna_lensing_points"])
         lna_floor = lna_axis[-2]
 
@@ -590,37 +612,46 @@ class SpectrumSolver(eqx.Module):
         """
 
         tt_raw, te_raw, ee_raw = vmap(self.Cl_one_ell, in_axes=(0, None, None, None))(
-            self.lensing_ells_indices, PT, BG, params
+            self.sampled_ells, PT, BG, params
         )
 
         # Cubic spline for smooth Cl over user requested ells
         # The raw Cls live on the sparse tabulated ell grid; spline them up
-        # onto the dense contiguous self.lensing_ells axis.
-        sampled_ells = bessel_l_tab[self.lensing_ells_indices]
-        tt_unlensed = CubicSpline(sampled_ells, tt_raw, check=False)(self.lensing_ells)
-        te_unlensed = CubicSpline(sampled_ells, te_raw, check=False)(self.lensing_ells)
-        ee_unlensed = CubicSpline(sampled_ells, ee_raw, check=False)(self.lensing_ells)
+        # onto the dense contiguous self.evaluated_ells axis.
+        knots = self.sampled_ells
+        tt_unlensed = CubicSpline(knots, tt_raw, check=False)(self.evaluated_ells)
+        te_unlensed = CubicSpline(knots, te_raw, check=False)(self.evaluated_ells)
+        ee_unlensed = CubicSpline(knots, ee_raw, check=False)(self.evaluated_ells)
+
+        # Align the ells to index the power spectra properly and excise the lensing buffer
+        out = slice(self.ellmin - MINIMUM_ALLOWED_L, self.ellmax - 1)
 
         def get_lensed_Cls():
             tt_lensed, te_lensed, ee_lensed = self.lensed_Cls(
-                self.lensing_ells, tt_unlensed, te_unlensed, ee_unlensed, PT, BG, params
+                self.evaluated_ells,
+                tt_unlensed,
+                te_unlensed,
+                ee_unlensed,
+                PT,
+                BG,
+                params,
             )
             return (
-                tt_lensed[self.ells - 2],
-                te_lensed[self.ells - 2],
-                ee_lensed[self.ells - 2],
+                tt_lensed[out],
+                te_lensed[out],
+                ee_lensed[out],
             )
 
         def get_unlensed_Cls():
             return (
-                tt_unlensed[self.ells - 2],
-                te_unlensed[self.ells - 2],
-                ee_unlensed[self.ells - 2],
+                tt_unlensed[out],
+                te_unlensed[out],
+                ee_unlensed[out],
             )
 
         return lax.cond(self.options["lensing"], get_lensed_Cls, get_unlensed_Cls)
 
-    def Cl_one_ell(self, idx, PT, BG, params):
+    def Cl_one_ell(self, l, PT, BG, params):
         r"""
         Computes angular power spectrum for single multipole.
 
@@ -628,8 +659,10 @@ class SpectrumSolver(eqx.Module):
 
         Parameters:
         -----------
-        idx : int
-            Index into bessel_l_tab for multipole :math:`\ell`
+        l : int
+            Multipole :math:`\ell` to evaluate. Must be one of the tabulated
+            multipoles in ``bessel_l_tab`` -- the Bessel kernels exist only
+            there, and the column is looked up by exact match.
         PT : perturbations.PerturbationTable
             Perturbation evolution table
         BG : background.Background
@@ -642,7 +675,10 @@ class SpectrumSolver(eqx.Module):
         tuple
             :math:`(C_\ell^{TT}, C_\ell^{TE}, C_\ell^{EE})` angular power spectra
         """
-        l = bessel_l_tab[idx]
+        # The kernel tables are keyed by column position, so translate the
+        # physical multipole into one. Exact by construction: every l handed
+        # here is drawn from bessel_l_tab itself (self.sampled_ells).
+        idx = jnp.searchsorted(bessel_l_tab, l)
         k_axis = self.k_axis_transfer
         lna_axis = PT.lna[:-1]
         delta_lna = PT.lna[-1] - PT.lna[-2]

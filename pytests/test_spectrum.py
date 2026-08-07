@@ -1,7 +1,7 @@
 """
 Tests for SpectrumSolver's multipole-axis contracts.
 
-The internal contiguous ell axis (``lensing_ells``) must start exactly at 2
+The internal contiguous ell axis (``evaluated_ells``) must start exactly at 2
 and step by 1: the Wigner-d recurrences chain adjacent entries, the lensing
 correlation sums must cover the full multipole range, and get_Cl slices
 outputs with ``[ells - 2]``. ``l_min`` may only select which ells are
@@ -44,9 +44,9 @@ def test_ellmin_below_2_rejected_by_schema():
 @pytest.mark.parametrize("lensing", [False, True])
 def test_internal_ell_axis_anchored_at_2(lensing):
     ss = _solver(l_min=30, l_max=100, lensing=lensing)
-    assert int(ss.ells[0]) == 30
-    assert int(ss.lensing_ells[0]) == 2
-    assert bool(jnp.all(jnp.diff(ss.lensing_ells) == 1))
+    assert int(ss.ellmin) == 30
+    assert int(ss.evaluated_ells[0]) == 2
+    assert bool(jnp.all(jnp.diff(ss.evaluated_ells) == 1))
 
 
 def test_bessel_tables_are_reproducible_from_scipy():
