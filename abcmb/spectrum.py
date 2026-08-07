@@ -262,7 +262,6 @@ class SpectrumSolver(eqx.Module):
         Eq.(3.15) in astro-ph/0601594
 
         Returns:
-        array
             Lensing matter power spectrum P(k, z), dimensionless.
         """
         a = jnp.exp(lna)
@@ -277,28 +276,22 @@ class SpectrumSolver(eqx.Module):
 
         return 9.0 / 8.0 / jnp.pi**2 * Om**2 * aH**4 * Pk / k
 
-    def lensing_Cl(self, ells, PT, BG, params):
+    def lensing_Cl(
+        self,
+        ells: Float[Array, " l"],
+        PT: "PerturbationTable",
+        BG: "Background",
+        params: "Params",
+    ) -> Float[Array, " l"]:
         """
         Angular lensing power spectrum at multipole ell.
 
         IMPORTANT: Assumes Limber approximation throughout, even at ell=2.
 
-        Eq.(3.14) in astro-ph/0601594, except shifts ell -> ell+1/2 to match CLASS.
-
-        Parameters:
-        -----------
-        ell : float or array
-            Multipole
-        PT : perturbations.PerturbationTable
-            Perturbation evolution table
-        BG : background.Background
-            Background cosmology module
-        params : dict
-            Dictionary of input and derived parameters
+        Eq.(3.14) in astro-ph/0601594, except shifts ell -> ell+1/2
+        to align with natural indexing of spherical Bessel (matches CLASS).
 
         Returns:
-        --------
-        float or array
             Angular lensing matter power spectrum Cl^phiphi, dimensionless.
         """
 
@@ -307,11 +300,11 @@ class SpectrumSolver(eqx.Module):
         def chi(lna):
             return BG.tau0 - BG.tau(lna)
 
-        # substitute lna_safe everywhere, then mask the result to 0 at the boundary.
         lna_axis = jnp.linspace(BG.lna_rec, 0.0, self.options["lna_lensing_points"])
         lna_floor = lna_axis[-2]
 
         def integrand_func(lna):
+            # substitute lna_safe everywhere, then mask the result to 0 at the boundary.
             lna_safe = jnp.where(lna < 0.0, lna, lna_floor)
             chi_safe = chi(lna_safe)
             k = (ells + 0.5) / chi_safe
@@ -328,43 +321,51 @@ class SpectrumSolver(eqx.Module):
         return coeff * jnp.trapezoid(integrand, lna_axis, axis=0)
 
     def lensed_Cls(
-        self, ells, ClTT_unlensed, ClTE_unlensed, ClEE_unlensed, PT, BG, params
-    ):
+        self,
+        ells: Int[Array, " num_lensing_ell"],
+        ClTT_unlensed: Float[Array, " num_lensing_ell"],
+        ClTE_unlensed: Float[Array, " num_lensing_ell"],
+        ClEE_unlensed: Float[Array, " num_lensing_ell"],
+        PT: "PerturbationTable",
+        BG: "Background",
+        params: "Params",
+    ) -> tuple[
+        Float[Array, " num_lensing_ell"],
+        Float[Array, " num_lensing_ell"],
+        Float[Array, " num_lensing_ell"],
+    ]:
         """
-        Compute lensed CMB power spectra.
+         Compute lensed CMB power spectra.
 
-        Applies gravitational lensing corrections to unlensed temperature
-        and polarization power spectra using Wigner rotation matrices.
+         All-sky correlation-function method of Challinor & Lewis,
+         astro-ph/0502425 (PRD 71, 103010). The unlensed spectra are
+         transformed to real-space correlation functions, the deflection
+         smearing is applied there through the X_imj factors, and the result
+         is transformed back by Gauss-Legendre quadrature.
 
-        Parameters:
-        -----------
-        ells : array
-            Multipole values
-        ClTT_unlensed : array
-            Unlensed temperature power spectrum
-        ClTE_unlensed : array
-            Unlensed temperature-E-mode cross spectrum
-        ClEE_unlensed : array
-            Unlensed E-mode polarization power spectrum
-        PT : perturbations.PerturbationTable
-            Perturbation evolution table
-        BG : background.Background
-            Background cosmology module
-        params : dict
-            Dictionary of input and derived parameters
+         Equation numbers below are that paper's; the notation here follows
+         it, and CLASS implements the same method (lensing.c)::
+
+             Cgl, Cgl2   Eq. (35)  the d11 / d(-1)1 deflection covariances
+             sigma2      unnumbered, after Eq. (35): sigma^2 = Cgl(0) - Cgl(b),
+                                   hence Cgl[-1] (mu = 1) minus the rest
+             X_imn       Eq. (37)  defining integral
+             ksi         Eq. (38)  temperature
+             X000, X220  Eqs. (39), (40)
+             ksip        Eq. (54)  EE, +
+             ksim        Eq. (55)  EE, -
+             ksix        Eq. (56)  TE
+             X022        Eq. (57)
+             X121        Eq. (58)
+             X132        Eq. (59)
+             X242        Eq. (60)
 
         Returns:
-        --------
-        tuple
-            (ClTT, ClTE, ClEE) lensed power spectra
+             (ClTT, ClTE, ClEE) lensed power spectra
         """
         # num_mu is static (it comes from options), so scipy is fine
-        # -- by the time the HLO graph is built,
-        # mu and w are constant arrays contributing no nodes.
-        #
         # The appended mu = 1 node carries weight 0: it extends the grid to
-        # the endpoint for the Wigner-d recurrences without altering the
-        # quadrature.
+        # the endpoint for the Wigner-d recurrences without altering the quadrature.
         num_mu = (
             self.ellmax
             + self.options["lensing_buffer"]
@@ -397,25 +398,21 @@ class SpectrumSolver(eqx.Module):
         d02 = d20
         dm24 = d4m2
 
-        # Lensing angular correlation function
-        Cgl = (
-            1.0
-            / 4.0
-            / jnp.pi
-            * jnp.sum((2.0 * ells + 1) * ells * (ells + 1) * Clpp * d11, axis=1)
-        )  # Nmu
-        Cgl2 = (
-            1.0
-            / 4.0
-            / jnp.pi
-            * jnp.sum((2.0 * ells + 1) * ells * (ells + 1) * Clpp * dm11, axis=1)
-        )  # Nmu
-        sigma2 = Cgl[-1] - Cgl
-        Cgl = Cgl[:, None]
-        Cgl2 = Cgl2[:, None]
-        sigma2 = sigma2[:, None]
-
         llp1 = ells * (ells + 1)
+
+        def corr(
+            Cl: Float[Array, " num_lensing_ell"],
+            kernel: Float[Array, "num_mu num_lensing_ell"],
+        ) -> Float[Array, " num_mu"]:
+            """(1/4pi) Sum_l (2l+1) Cl K_l(mu), over the ell axis -> (Nmu,)."""
+            return jnp.sum((2.0 * ells + 1) * Cl * kernel, axis=1) / (4.0 * jnp.pi)
+
+        # Lensing angular correlation function. sigma2 is the variance of the
+        # deflection *difference* between two points separated by mu, hence
+        # the value at mu = 1 (zero separation) minus the rest.
+        Cgl = corr(llp1 * Clpp, d11)  # Nmu
+        Cgl2 = corr(llp1 * Clpp, dm11)[:, None]
+        sigma2 = (Cgl[-1] - Cgl)[:, None]
 
         X000 = jnp.exp(-llp1 * sigma2 / 4)
         X000_prime = -llp1 / 4.0 * X000
@@ -447,85 +444,36 @@ class SpectrumSolver(eqx.Module):
         )
 
         # Correlation functions
-        ksi = (
-            1.0
-            / 4.0
-            / jnp.pi
-            * jnp.sum(
-                (2.0 * ells + 1)
-                * ClTT_unlensed
-                * (
-                    X000**2 * d00
-                    + 8.0 / ells / (ells + 1) * Cgl2 * X000_prime**2 * d1m1
-                    + Cgl2**2 * (X000_prime**2 * d00 + X220**2 * d2m2)
-                    # - d00
-                ),
-                axis=1,
-            )
+        ksi = corr(
+            ClTT_unlensed,
+            X000**2 * d00
+            + 8.0 / llp1 * Cgl2 * X000_prime**2 * d1m1
+            + Cgl2**2 * (X000_prime**2 * d00 + X220**2 * d2m2),
         )
 
-        ksip = (
-            1.0
-            / 4.0
-            / jnp.pi
-            * jnp.sum(
-                (2.0 * ells + 1)
-                * ClEE_unlensed
-                * (
-                    X022**2 * d22
-                    + 2 * Cgl2 * X132 * X121 * d31
-                    + Cgl2**2 * (X022_prime**2 * d22 + X242 * X220 * d40)
-                    # - d22
-                ),
-                axis=1,
-            )
+        ksip = corr(
+            ClEE_unlensed,
+            X022**2 * d22
+            + 2 * Cgl2 * X132 * X121 * d31
+            + Cgl2**2 * (X022_prime**2 * d22 + X242 * X220 * d40),
         )
 
-        ksim = (
-            1.0
-            / 4.0
-            / jnp.pi
-            * jnp.sum(
-                (2.0 * ells + 1)
-                * ClEE_unlensed
-                * (
-                    X022**2 * d2m2
-                    + Cgl2 * (X121**2 * d1m1 + X132**2 * d3m3)
-                    + 1.0
-                    / 2.0
-                    * Cgl2**2
-                    * (2 * X022_prime**2 * d2m2 + X220**2 * d00 + X242**2 * d4m4)
-                    # - d2m2
-                ),
-                axis=1,
-            )
+        ksim = corr(
+            ClEE_unlensed,
+            X022**2 * d2m2
+            + Cgl2 * (X121**2 * d1m1 + X132**2 * d3m3)
+            + 0.5
+            * Cgl2**2
+            * (2 * X022_prime**2 * d2m2 + X220**2 * d00 + X242**2 * d4m4),
         )
 
-        ksix = (
-            1.0
-            / 4.0
-            / jnp.pi
-            * jnp.sum(
-                (2.0 * ells + 1)
-                * ClTE_unlensed
-                * (
-                    X022 * X000 * d02
-                    + Cgl2
-                    * 2
-                    * X000_prime
-                    / jnp.sqrt(llp1)
-                    * (X121 * d11 + X132 * d3m1)
-                    + 1.0
-                    / 2.0
-                    * Cgl2**2
-                    * (
-                        (2 * X022_prime * X000_prime + X220**2) * d20
-                        + X220 * X242 * dm24
-                    )
-                    # - d02
-                ),
-                axis=1,
-            )
+        ksix = corr(
+            ClTE_unlensed,
+            X022 * X000 * d02
+            + Cgl2 * 2 * X000_prime / jnp.sqrt(llp1) * (X121 * d11 + X132 * d3m1)
+            + 0.5
+            * Cgl2**2
+            * ((2 * X022_prime * X000_prime + X220**2) * d20 + X220 * X242 * dm24),
         )
 
         # ClTT = 2.*jnp.pi * jnp.trapezoid(ksi[:, None]*d00, mu, axis=0) + ClTT_unlensed
