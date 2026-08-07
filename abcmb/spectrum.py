@@ -64,14 +64,6 @@ class SpectrumSolver(eqx.Module):
     Computes temperature and polarization angular power spectra by
     integrating transfer functions over wavenumber and time.
 
-    Every scalar knob is read from ``options`` at its use site (``l_min``,
-    ``l_max``, ``lensing``, ``k_pivot``, ``scale_sw``, ``scale_isw``,
-    ``scale_dop``, ``scale_pol``, ``lna_lensing_points``), the same
-    convention as :class:`~.perturbations.PerturbationEvolver`; only the
-    grids that must be built once -- the k axes and the multipole axes --
-    are fields. Build ``options`` with
-    :func:`~.inputs.schema.resolve_options` so the defaults are filled in.
-
     Attributes:
     -----------
     ells : Array

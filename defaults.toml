@@ -100,7 +100,7 @@ icoeff_PE = 0.8            # (option, float) PID controller I coefficient.
 dcoeff_PE = 0.0            # (option, float) PID controller D coefficient.
 
 [source]
-scale_sw = 1   # (option, int) Sachs-Wolfe term switch/scale.
-scale_isw = 1  # (option, int) Integrated Sachs-Wolfe term switch/scale.
-scale_dop = 1  # (option, int) Doppler term switch/scale.
-scale_pol = 1  # (option, int) Polarization term switch/scale.
+scale_sw = 1.0   # (option, float) Sachs-Wolfe term switch/scale.
+scale_isw = 1.0  # (option, float) Integrated Sachs-Wolfe term switch/scale.
+scale_dop = 1.0  # (option, float) Doppler term switch/scale.
+scale_pol = 1.0  # (option, float) Polarization term switch/scale.

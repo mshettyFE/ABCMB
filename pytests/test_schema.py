@@ -1,6 +1,6 @@
 """
 Schema tests: option/param resolution (defaults, CLASS aliases, passthrough) and
-the input-validation guards -- choices, bounds, the light kind check, the
+the input-validation guards -- choices, bounds, the kind check, the
 neutrino one-of / LINX-conflict checks, and the derived-cosmology guards.
 File-driven config loading, the CLI, and run-file reproducibility live in
 ``test_config.py``.
@@ -49,6 +49,32 @@ def test_staged_entry_points_require_derived_params(lcdm_model):
     _check_derived(full)  # must not raise
 
 
+def test_resolve_inputs_is_the_differentiation_boundary(lcdm_model):
+    # Resolve once, eagerly; differentiate everything downstream. The
+    # gradient must flow through derive(), which is the point of putting the
+    # boundary here rather than at run_derived (YHe responds to omega_b
+    # through the BBN table).
+    import jax
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        resolved = lcdm_model.resolve_inputs({"omega_b": 0.0225})
+
+    def h_of_omega_b(omega_b):
+        p = dict(resolved)
+        p["omega_b"] = omega_b
+        return lcdm_model.derive(p)["omega_m"]
+
+    d = jax.jacfwd(h_of_omega_b)(resolved["omega_b"])
+    assert float(d) == pytest.approx(1.0, abs=1e-6)  # omega_m = omega_b + ...
+
+    # ...and the eager front door refuses to be differentiated, naming the fix.
+    with pytest.raises(ValueError, match="is a JAX tracer.*resolve_inputs"):
+        jax.jacfwd(lambda x: lcdm_model.add_derived_parameters({"omega_b": x})["om"])(
+            0.0225
+        )
+
+
 def test_resolve_options_defaults():
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -56,7 +82,7 @@ def test_resolve_options_defaults():
     assert options["l_max"] == 2500
     assert options["lensing"] is False
     assert options["bbn_type"] == ""
-    assert options["scale_sw"] == 1
+    assert options["scale_sw"] == 1.0
     assert options["k_pivot"] == 0.05
     # lna-grid precision knobs (endpoints stay structural/derived)
     assert options["lna_output_points"] == 500
@@ -84,12 +110,12 @@ def test_unknown_option_warns_and_strict_raises():
         resolve_options({"bogus": 1}, strict=True)
 
 
-def test_l_max_below_l_min_warns_and_strict_raises():
-    # Cross-option consistency check (per-Spec bounds cannot see two keys at once).
-    with pytest.warns(UserWarning, match=r"l_max .* < l_min"):
-        resolve_options({"l_min": 100, "l_max": 50})
+def test_l_max_below_l_min_raises():
+    # Cross-option consistency check (per-Spec bounds cannot see two keys at
+    # once). Fatal like the option bounds themselves: an empty output
+    # multipole range is not something anyone asks for on purpose.
     with pytest.raises(ValueError, match=r"l_max .* < l_min"):
-        resolve_options({"l_min": 100, "l_max": 50}, strict=True)
+        resolve_options({"l_min": 100, "l_max": 50})
 
 
 def test_resolve_params_defaults_aliases_extras():
@@ -122,10 +148,8 @@ def test_unknown_param_warns_and_strict_raises():
 
 
 def test_choices_validation():
-    # Tier-1: an off-list enum value warns with a suggestion; valid values (incl.
-    # a case variant) are clean.
-    with pytest.warns(UserWarning, match=r"not one of.*Did you mean 'table'"):
-        resolve_options({"bbn_type": "tabel"})
+    # An off-list enum value raises with a suggestion; valid values (incl. a case variant) are
+    # clean.
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         resolve_options({"bbn_type": "Table"})  # case-insensitive
@@ -133,30 +157,45 @@ def test_choices_validation():
     assert not [x for x in caught if "not one of" in str(x.message)]
 
 
-def test_bounds_validation():
-    # Tier-2: out-of-range numeric values warn; in-range are clean.
+def test_param_bounds_warn():
+    # Params are sampled and differentiated: a wide-prior scan or an
+    # asymptotic check off the end of a bound is legitimate use, so the
+    # caller keeps the choice.
     with pytest.warns(UserWarning, match="below the minimum"):
         resolve_params({"h": -0.5})
     with pytest.warns(UserWarning, match="above the maximum"):
         resolve_params({"YHe": 1.5})
-    with pytest.warns(UserWarning, match="below the minimum"):
+
+
+def test_option_bounds_raise():
+    # Options are static configuration -- never sampled, never
+    # differentiated -- and every option bound is structural rather than a
+    # recommended range, so out-of-range has no deliberate reading.
+    with pytest.raises(ValueError, match="below the minimum"):
         resolve_options({"k_max": -1.0})
     # k_step_transition = 0 divides by zero in the tanh transition argument
     # (CLASS hard-rejects it); the exclusive-zero floor must catch exactly 0.
-    with pytest.warns(UserWarning, match="below the minimum"):
+    with pytest.raises(ValueError, match="below the minimum"):
         resolve_options({"k_step_transition": 0.0})
+    # l_max_g < 4 starves the photon hierarchy.
+    with pytest.raises(ValueError, match="below the minimum"):
+        resolve_options({"l_max_g": 3})
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")  # in-range stays clean
+        resolve_options({"k_max": 1.0, "l_max_g": 12})
 
 
 def test_check_value_kind():
-    # The light type check warns on a clear kind mismatch and stays silent on a
-    # match -- including a 0-d array for a numeric kind (the notebook jnp path that
+    # The kind check raises on a clear mismatch and stays silent on a match --
+    # including a 0-d array for a numeric kind (the notebook jnp path that
     # _as_number exists to accept).
     import jax.numpy as jnp
 
     from abcmb.inputs.schema import Spec, _check_value
 
     num = Spec("x", 1.0, float)
-    with pytest.warns(UserWarning, match=r"'x' expected float, got str"):
+    with pytest.raises(ValueError, match=r"'x' expected float, got str"):
         _check_value(num, "oops")
     with warnings.catch_warnings():
         warnings.simplefilter("error")  # a matching kind must NOT warn
@@ -169,12 +208,65 @@ def test_check_value_kind():
         warnings.simplefilter("error")
         _check_value(flag, True)
         _check_value(flag, 1)  # 0/1 accepted for a bool
-    with pytest.warns(UserWarning, match=r"'f' expected bool, got str"):
+    with pytest.raises(ValueError, match=r"'f' expected bool, got str"):
         _check_value(flag, "yes")
 
     name = Spec("s", "", str)
-    with pytest.warns(UserWarning, match=r"'s' expected str, got float"):
+    with pytest.raises(ValueError, match=r"'s' expected str, got float"):
         _check_value(name, 3.14)
+
+
+def test_int_specs_reject_non_integral_floats():
+    # An int spec sizes or indexes an array: l_max=2500.7 would silently turn
+    # the multipole axis float and one entry longer, and lna_output_points
+    # =500.5 would only fail later inside jnp.linspace. A float that lands
+    # exactly on an integer (a TOML 2500.0, a numpy scalar) stays fine.
+    with pytest.raises(ValueError, match=r"'l_max' expected an integer"):
+        resolve_options({"l_max": 2500.7})
+    with pytest.raises(ValueError, match=r"'lna_output_points' expected an integer"):
+        resolve_options({"lna_output_points": 500.5})
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        assert resolve_options({"l_max": 2500.0})["l_max"] == 2500
+
+    # The scale_* source switches are float by declaration -- spectrum.py
+    # multiplies by them, so half the ISW is a meaningful request.
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        assert resolve_options({"scale_isw": 0.5})["scale_isw"] == 0.5
+
+
+def test_check_value_rejects_tracers():
+    # Parsing is structural and carries no derivative, so it must happen
+    # outside every jax transformation. A tracer reaching the parser means
+    # the differentiation boundary was drawn too early; say so by name
+    # rather than accepting it and re-parsing on every gradient evaluation.
+    import jax
+    import jax.numpy as jnp
+
+    from abcmb.inputs.schema import Spec, _check_value
+
+    num = Spec("x", 1.0, float, bounds=(0.0, None))
+
+    def f(x):
+        _check_value(num, x)
+        return x * 2.0
+
+    with pytest.raises(ValueError, match=r"'x' is a JAX tracer.*resolve_inputs"):
+        jax.grad(f)(0.67)
+
+    # A concrete 0-d array is not a tracer and stays fine.
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        _check_value(num, jnp.asarray(0.5))
+
+
+def test_choices_mismatch_raises():
+    # An off-list enum value has no defensible reading: it would otherwise be
+    # stored as-is and surface as a silent fallback far from the input.
+    with pytest.raises(ValueError, match=r"not one of.*Did you mean 'table'"):
+        resolve_options({"bbn_type": "tabel"})
 
 
 def test_neutrino_one_of_invariant():
@@ -282,8 +374,10 @@ def test_n_massless_from_neff_guard():
 
 
 def test_bbn_type_validation():
-    # The schema's choices check warns; interpretation refuses to guess: an
-    # uninterpretable bbn_type raises instead of silently meaning "no BBN".
+    # resolve_options already rejects an off-list bbn_type; this is the
+    # second line of defence for a value that reaches interpretation without
+    # passing through the schema. It refuses to guess: an uninterpretable
+    # bbn_type raises instead of silently meaning "no BBN".
     from abcmb.inputs.derived import _bbn_type
 
     assert _bbn_type({"bbn_type": "Table"}) == "table"  # case-insensitive

@@ -52,10 +52,10 @@ class Options(TypedDict):
     pcoeff_PE: float
     icoeff_PE: float
     dcoeff_PE: float
-    scale_sw: int
-    scale_isw: int
-    scale_dop: int
-    scale_pol: int
+    scale_sw: float
+    scale_isw: float
+    scale_dop: float
+    scale_pol: float
 
 
 class Params(TypedDict, total=False):

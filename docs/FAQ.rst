@@ -30,7 +30,7 @@ There are a few reasons why otherwise JAX-safe code might not call the cached JI
 
 You may also be seeing recompilation because you wrapped the model call (``model(params)``, or ``Model.run_derived``) in a larger ``jit`` context.  We do not recommend enclosing either in another ``jax.jit``, for a couple reasons:
 
-1. ``add_derived_parameters``, the eager derivation stage inside ``model(params)``, is intended to be called outside of ``jit`` (it performs concrete parameter checks and CPU-pinned BBN solves).
+1. ``resolve_inputs``, the parsing stage inside ``model(params)``, is intended to be called outside of ``jit`` (it validates concrete values, and rejects tracers by design -- see :doc:`public_api`).  ``derive``, the stage after it, performs the CPU-pinned BBN solves and should also stay outside ``jit``.
 
 2. LINX and HyRex are CPU-optimized (HyRex measured ~29x faster on CPU than an RTX 4070) and are deliberately kept outside the main ABCMB ``jit`` context, with their inputs committed to the CPU device.  Wrapping ``Model.run_derived`` in a larger ``jit`` context defeats that placement and will slow down your code substantially.
 

@@ -227,12 +227,21 @@ def test_end_to_end_differentiability():
         "tau_reion": 0.0544,
     }
     model = Model(l_max=100, k_max=0.1)
+    # Resolve once, eagerly: parsing is structural and rejects tracers, so it
+    # sits outside the differentiated region (Model.resolve_inputs). Both
+    # traceable stages -- derive (omega_Lambda, H0, the BBN YHe) and
+    # run_derived -- stay inside it, so this is still AD through the FULL
+    # pipeline.
+    resolved = model.resolve_inputs(base)
+
+    def solve(p):
+        return model.run_derived(model.derive(p))
 
     # 1. A_s linearity as an AD identity (jvp returns primals too -- one pass).
     def f_As(A):
-        p = dict(base)
+        p = dict(resolved)
         p["A_s"] = A
-        out = model(p)
+        out = solve(p)
         return out.ClTT, out.Pk
 
     (cl, pk), (dcl, dpk) = jax.jvp(
@@ -246,9 +255,9 @@ def test_end_to_end_differentiability():
 
     # 2. d(sum ClTT)/dh vs central FD.
     def f_h(h):
-        p = dict(base)
+        p = dict(resolved)
         p["h"] = h
-        return jnp.sum(model(p).ClTT)
+        return jnp.sum(solve(p).ClTT)
 
     _, ad = jax.jvp(f_h, (jnp.asarray(base["h"]),), (jnp.asarray(1.0),))
     eps = 1e-3 * base["h"]

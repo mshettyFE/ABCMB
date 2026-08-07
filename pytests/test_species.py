@@ -271,10 +271,11 @@ def test_k_batch_strategy_option():
     assert perturbations._k_batch_strategy("VMAP") is Strategy.VMAP
     expected_auto = Strategy.VMAP if default_backend() == "gpu" else Strategy.SCAN
     assert perturbations._k_batch_strategy("auto") is expected_auto
-    # Schema warns at resolution (non-fatal choices)...
-    with pytest.warns(UserWarning, match=r"not one of.*Did you mean"):
+    # Schema rejects an off-list value at resolution...
+    with pytest.raises(ValueError, match=r"not one of.*Did you mean"):
         schema.resolve_options({"k_batch_strategy": "vamp"})
-    # ...and an uninterpretable value fails loudly at use time.
+    # ...and the use-site guard still refuses to guess for a value that
+    # reached it without passing through the schema.
     with pytest.raises(ValueError, match="not one of 'auto', 'scan', 'vmap'"):
         perturbations._k_batch_strategy("vamp")
 

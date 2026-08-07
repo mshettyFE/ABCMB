@@ -8,7 +8,7 @@ Two kinds of input, split by a simple rule:
 From the CLI/config both are just KEY=VALUE, routed by name (see
 ``option_key_set``); the split is an internal boundary the front-end hides.
 
-Provides default resolution, CLASS-style aliases, light type checks,
+Provides default resolution, CLASS-style aliases, input validation,
 human-readable listings, and the imperative ``derive_parameters``.
 """
 
@@ -19,6 +19,7 @@ from enum import StrEnum, auto
 from typing import TYPE_CHECKING, Any, cast
 
 import jax.numpy as jnp
+from jax.core import Tracer
 
 if TYPE_CHECKING:
     from ._schema_types import Options, Params
@@ -454,17 +455,18 @@ OPTION_SCHEMA = (
     Spec("pcoeff_PE", 0.25, float, "PID controller P coefficient.", group=Group.SOLVER),
     Spec("icoeff_PE", 0.8, float, "PID controller I coefficient.", group=Group.SOLVER),
     Spec("dcoeff_PE", 0.0, float, "PID controller D coefficient.", group=Group.SOLVER),
-    # Source-term switches for the CMB temperature transfer function
-    Spec("scale_sw", 1, int, "Sachs-Wolfe term switch/scale.", group=Group.SOURCE),
+    Spec("scale_sw", 1.0, float, "Sachs-Wolfe term switch/scale.", group=Group.SOURCE),
     Spec(
         "scale_isw",
-        1,
-        int,
+        1.0,
+        float,
         "Integrated Sachs-Wolfe term switch/scale.",
         group=Group.SOURCE,
     ),
-    Spec("scale_dop", 1, int, "Doppler term switch/scale.", group=Group.SOURCE),
-    Spec("scale_pol", 1, int, "Polarization term switch/scale.", group=Group.SOURCE),
+    Spec("scale_dop", 1.0, float, "Doppler term switch/scale.", group=Group.SOURCE),
+    Spec(
+        "scale_pol", 1.0, float, "Polarization term switch/scale.", group=Group.SOURCE
+    ),
 )
 
 
@@ -520,12 +522,38 @@ def _as_number(value):
     return None
 
 
-def _check_value(spec, value):
+def _check_value(spec, value, noun="value", bounds_fatal=False):
     """
-    Light, non-fatal validation of a user-supplied value: kind, then ``choices``
-    (enum-like options) and ``bounds`` (numeric range). Warns on any mismatch;
-    never raises. Applied only to declared schema entries the user actually set.
+    Validate a user-supplied value against its :class:`Spec`: kind, then
+    ``choices`` (enum-like options) and ``bounds`` (numeric range). Applied
+    only to declared schema entries the user actually set.
+
+    Resolution is a *parsing* stage and runs on concrete values only, so a
+    tracer is rejected outright.
+
+    Kind and ``choices`` mismatches raise. ``bounds`` raise when
+    ``bounds_fatal``, which splits on the option/param axis: option bounds are
+    structural (``l_max_g < 4`` starves the photon hierarchy, ``k_step_sub
+    <= 0`` is a zero step) and static config is never sampled, so there is no
+    reading under which violating one is deliberate. Param bounds are physical
+    priors, where a wide-prior scan or an asymptotic check is legitimate use,
+    so those only warn.
+
+    Note that ``strict`` does not promote these -- it governs unrecognized
+    keys only.
     """
+    # 0. concreteness. Parsing is structural work -- aliases, defaults,
+    # validation -- with no derivative, so it belongs outside every jax
+    # transformation. A tracer here means the boundary was drawn too early.
+    if isinstance(value, Tracer):
+        raise ValueError(
+            f"{noun} '{spec.name}' is a JAX tracer ({type(value).__name__}). "
+            "Input resolution runs on concrete values and must happen outside "
+            "jax.grad/jacfwd/jit: call Model.resolve_inputs(...) first, then "
+            "differentiate or compile Model.derive(...) / Model.run_derived(...) "
+            "on the result."
+        )
+
     # 1. kind
     if spec.kind is bool:
         ok = isinstance(value, (bool, int))  # accept 0/1
@@ -536,36 +564,44 @@ def _check_value(spec, value):
     else:
         ok = True
     if not ok:
-        warnings.warn(
-            f"'{spec.name}' expected {spec.kind.__name__}, "
-            f"got {type(value).__name__} ({value!r}).",
-            stacklevel=3,
+        raise ValueError(
+            f"{noun} '{spec.name}' expected {spec.kind.__name__}, "
+            f"got {type(value).__name__} ({value!r})."
         )
-        return  # remaining checks assume the kind is right
+
+    if spec.kind is int:
+        num = _as_number(value)
+        if num is not None and num != int(num):
+            raise ValueError(
+                f"{noun} '{spec.name}' expected an integer, got {value!r}. "
+                "It sizes or indexes an array, so a fractional value is not "
+                "meaningful."
+            )
 
     # 2. choices (enum-like options; case-insensitive for strings)
     if spec.choices:
         allowed = {str(c).lower() for c in spec.choices}
         if isinstance(value, str) and value.lower() not in allowed:
-            msg = f"'{spec.name}'={value!r} is not one of {list(spec.choices)}."
+            msg = f"{noun} '{spec.name}'={value!r} is not one of {list(spec.choices)}."
             suggestion = _did_you_mean(value, [str(c) for c in spec.choices])
             if suggestion:
                 msg += f" Did you mean {suggestion!r}?"
-            warnings.warn(msg, stacklevel=3)
+            raise ValueError(msg)
 
     # 3. bounds (numeric range; inclusive, None = unbounded)
     lo, hi = spec.bounds
     if lo is not None or hi is not None:
         num = _as_number(value)
+        msg = None
         if num is not None:
             if lo is not None and num < lo:
-                warnings.warn(
-                    f"'{spec.name}'={num!r} is below the minimum {lo}.", stacklevel=3
-                )
+                msg = f"'{spec.name}'={num!r} is below the minimum {lo}."
             elif hi is not None and num > hi:
-                warnings.warn(
-                    f"'{spec.name}'={num!r} is above the maximum {hi}.", stacklevel=3
-                )
+                msg = f"'{spec.name}'={num!r} is above the maximum {hi}."
+        if msg is not None:
+            if bounds_fatal:
+                raise ValueError(msg)
+            warnings.warn(msg, stacklevel=3)
 
 
 def describe_schema(schema, indent="  ") -> str:
@@ -632,12 +668,15 @@ def _resolve(
     wrap=_identity,
     noun="key",
     strict=False,
+    bounds_fatal=False,
 ) -> dict[str, Any]:
     """
     Resolves ``input_dict`` against ``schema`` (a tuple of :class:`Spec`): applies
     ``aliases`` (warning on use), fills declared entries from user values or
-    defaults with a light type check, and preserves unknown keys (warning, or
-    raising if ``strict``). Entries whose default is :data:`UNSET` are recognized
+    defaults, validating each supplied value with :func:`_check_value` (kind and
+    ``choices`` mismatches raise; out-of-bounds raises when ``bounds_fatal``,
+    else warns), and preserves unknown
+    keys (warning, or raising if ``strict``). Entries whose default is :data:`UNSET` are recognized
     but never auto-filled, so ``.get(...) is not None`` intent checks work
     downstream. ``wrap`` transforms every stored value (e.g. ``jnp.array`` for
     params); ``noun`` labels the warnings ("option" / "parameter").
@@ -680,7 +719,7 @@ def _resolve(
     for spec in schema:
         if spec.name in resolved:
             value = resolved[spec.name]
-            _check_value(spec, value)
+            _check_value(spec, value, noun=noun, bounds_fatal=bounds_fatal)
             out[spec.name] = wrap(value)
         elif spec.default is not UNSET:
             out[spec.name] = wrap(spec.default)
@@ -689,16 +728,19 @@ def _resolve(
     return out
 
 
-def _check_option_consistency(options, strict=False):
-    """Cross-option checks that a single ``Spec``'s ``bounds`` cannot express."""
+def _check_option_consistency(options):
+    """
+    Cross-option checks that a single ``Spec``'s ``bounds`` cannot express.
+
+    Fatal for the same reason option bounds are (see :func:`_check_value`):
+    these are structural facts about static configuration, with no reading
+    under which violating one is deliberate.
+    """
     if options["l_max"] < options["l_min"]:
-        msg = (
+        raise ValueError(
             f"l_max ({options['l_max']}) < l_min ({options['l_min']}); "
             "the output multipole range would be empty."
         )
-        if strict:
-            raise ValueError(msg)
-        warnings.warn(msg, stacklevel=3)
 
 
 def resolve_options(input_options, strict=False) -> "Options":
@@ -716,8 +758,12 @@ def resolve_options(input_options, strict=False) -> "Options":
         aliases=_alias_map(OPTION_SCHEMA),
         noun="option",
         strict=strict,
+        # Option bounds are structural, not a recommended range: static
+        # config is never sampled or differentiated, so out-of-range is
+        # always a mistake. Param bounds stay advisory.
+        bounds_fatal=True,
     )
-    _check_option_consistency(options, strict=strict)
+    _check_option_consistency(options)
     return cast("Options", options)
 
 

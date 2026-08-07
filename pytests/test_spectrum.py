@@ -27,8 +27,18 @@ def _solver(**option_overrides):
 
 
 def test_ellmin_below_2_raises():
+    # resolve_options rejects l_min=1 on its own (an option bound is fatal),
+    # so bypass it: this pins SpectrumSolver's *own* guard, which is what
+    # stops jnp.where(bessel_l_tab <= 1)[0][-1] from dying on an empty array.
+    options = resolve_options({"l_max": 100})
+    options["l_min"] = 1
     with pytest.raises(ValueError, match="l_min"):
-        _solver(l_min=1, l_max=100)
+        SpectrumSolver(jnp.array([0.1]), jnp.array([0.1]), options)
+
+
+def test_ellmin_below_2_rejected_by_schema():
+    with pytest.raises(ValueError, match=r"'l_min'.*below the minimum 2"):
+        resolve_options({"l_min": 1, "l_max": 100})
 
 
 @pytest.mark.parametrize("lensing", [False, True])

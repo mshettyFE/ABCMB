@@ -168,19 +168,26 @@ class Model(eqx.Module):
 
         self.adjoint = adjoint
 
-    # Convenience front door: eager derivation + the traceable solve. Kept
-    # as __call__ because "params in, spectra out" is the overwhelmingly
-    # common case and the documented entry point; staged use goes through
-    # add_derived_parameters + run_derived.
+    # Convenience front door: resolve + eager derivation + the traceable
+    # solve. Kept as __call__ because "params in, spectra out" is the
+    # overwhelmingly common case and the documented entry point; staged use
+    # goes through resolve_inputs + derive + run_derived.
     def __call__(self, params: dict | None = None) -> "Output":
         """
         Run the full pipeline: derive parameters, then compute spectra.
 
-        Includes the *eager* derivation stage (concrete parameter checks and
-        the CPU-pinned BBN solves), so do not wrap this call in ``jax.jit``
-        or ``jax.vmap``. Eager autodiff is fine: ``jax.grad`` / ``jax.jacfwd``
-        trace through the derivation. For staged use, :meth:`run_derived` is the jit-internal stage, applied to the
-        output of :meth:`add_derived_parameters`.
+        Includes input resolution and the *eager* derivation stage (concrete
+        parameter checks and the CPU-pinned BBN solves), so do not wrap this
+        call in ``jax.jit``, ``jax.vmap``, ``jax.grad`` or ``jax.jacfwd``:
+        parsing runs on concrete values and rejects tracers.
+
+        For staged use the pipeline is three methods --
+        :meth:`resolve_inputs` (eager, the differentiation boundary),
+        :meth:`derive` (traceable), :meth:`run_derived` (traceable, the
+        jit-internal stage)::
+
+            p = model.resolve_inputs({"omega_b": 0.02237})
+            jax.jacfwd(lambda q: model.run_derived(model.derive(q)).ClTT)(p)
 
         Parameters:
         -----------
@@ -204,9 +211,10 @@ class Model(eqx.Module):
         Compute CMB spectra from *already-derived* params (the output of
         :meth:`add_derived_parameters`).
 
-        This is the traceable stage of the pipeline and the natural
-        differentiation point: gradients with respect to (derived)
-        parameters flow through this method. Do not wrap it in a larger
+        The last traceable stage. Differentiating here gives gradients with
+        respect to the *derived* parameters, holding the derivation itself
+        fixed; to include the derivation's response (the BBN ``YHe``
+        especially), differentiate :meth:`derive` as well. Do not wrap it in a larger
         ``jax.jit``: the recombination and BBN companions inside are
         deliberately CPU-pinned outside the main jit context.
 
@@ -340,10 +348,45 @@ class Model(eqx.Module):
             transfer_start_threshold=self.options["transfer_start_threshold"],
         )
 
-    def add_derived_parameters(self, param_in: Mapping[str, ArrayLike]) -> "Params":
-        # Resolve raw params against PARAM_SCHEMA (defaults, aliases, unknown-key
-        # handling), then run the imperative cosmology derivation.
-        params = schema.resolve_params(param_in)
+    def resolve_inputs(self, param_in: Mapping[str, ArrayLike]) -> "Params":
+        """
+        Resolve raw user params against ``PARAM_SCHEMA``: apply CLASS-style
+        aliases, fill defaults, and validate what the user supplied.
+
+        **This is the differentiation boundary.** Resolution is structural
+        work -- it maps names and fills defaults -- and carries no derivative,
+        so it runs once, eagerly, on concrete values. Everything downstream
+        (:meth:`derive`, :meth:`run_derived`) is traceable. Handing a tracer
+        to this method raises rather than silently re-parsing on every
+        gradient evaluation.
+
+        Parameters:
+        -----------
+        param_in : Mapping
+            Raw cosmological parameters as the user typed them; omitted keys
+            resolve to the schema defaults.
+
+        Returns:
+        --------
+        Params
+            Schema-resolved params, ready for :meth:`derive`.
+        """
+        return schema.resolve_params(param_in)
+
+    def derive(self, params: "Params") -> "Params":
+        """
+        Run the imperative cosmology derivation on *already-resolved* params
+        (the output of :meth:`resolve_inputs`).
+
+        Differentiable, and the right target when a gradient should include
+        the response of the derived quantities -- ``YHe`` through the BBN
+        solve, ``H0`` from ``h``, the densities from the species content.
+        Differentiating :meth:`run_derived` alone instead holds those fixed,
+        which is a different derivative.
+
+        Do not wrap this in ``jax.jit``: the BBN companions inside are
+        deliberately CPU-pinned outside the main jit context.
+        """
         return derived.derive_parameters(
             params,
             self.options,
@@ -352,6 +395,17 @@ class Model(eqx.Module):
             linx_thermo=self.thermo_model_DNeff,
             linx_abundance=self.abundanceModel,
         )
+
+    def add_derived_parameters(self, param_in: Mapping[str, ArrayLike]) -> "Params":
+        """
+        Eager convenience front door: :meth:`resolve_inputs` then
+        :meth:`derive`, for the common case of concrete params in hand.
+
+        Because it parses, it must be called outside every jax
+        transformation. To differentiate, split it: resolve once, then
+        differentiate :meth:`derive`.
+        """
+        return self.derive(self.resolve_inputs(param_in))
 
 
 class Output(eqx.Module):

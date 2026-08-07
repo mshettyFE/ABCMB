@@ -85,26 +85,37 @@ the k grids and the solver settings. A change to any option needs a new
 ``Model`` and a new compilation. The ``params`` dict holds the physics inputs,
 and you can change it between calls.
 
-The two stages
-~~~~~~~~~~~~~~
+The three stages
+~~~~~~~~~~~~~~~~
 
-The pipeline has two stages. ``model(params)`` runs both.
+The pipeline has three stages. ``model(params)`` runs all three.
 
-The first stage is ``Model.add_derived_parameters(params)``. It resolves your
-input against the schema, and it adds the derived keys. Examples are
-``omega_r``, ``omega_Lambda``, ``om``, ``R_nu`` and ``H0``. It also runs the
-BBN calculation for ``YHe``.
+The first stage is ``Model.resolve_inputs(params)``. It resolves your input
+against the schema: it applies the CLASS-style aliases, fills the defaults,
+and validates what you supplied.
 
-This stage is **eager**. It checks concrete values, and it pins the BBN solve
-to the CPU. A JAX trace cannot do either of these. The stage is therefore
-separate.
+This stage is **eager**, and it is the differentiation boundary. Resolution
+is structural work. It maps names and fills defaults, and it has no
+derivative, so it should run once rather than on every gradient evaluation.
+It rejects a tracer with an error naming this method.
 
-The second stage is ``Model.run_derived(params)``. It takes the output of the
-first stage. It solves for the background, the recombination history, the
+The second stage is ``Model.derive(params)``. It takes the output of the
+first stage and adds the derived keys. Examples are ``omega_r``,
+``omega_Lambda``, ``om``, ``R_nu`` and ``H0``. It also runs the BBN
+calculation for ``YHe``.
+
+This stage is **traceable**, but it must stay outside ``jax.jit``: it pins
+the BBN solve to the CPU, and an outer jit removes that placement.
+
+The third stage is ``Model.run_derived(params)``. It takes the output of the
+second stage. It solves for the background, the recombination history, the
 perturbations and the spectra.
 
-This stage is **traceable**, and it is the correct place for a derivative.
-Gradients with respect to the derived parameters pass through it.
+This stage is **traceable** too.
+
+``Model.add_derived_parameters(params)`` remains as a convenience for the
+common case: it is ``resolve_inputs`` followed by ``derive``. Because it
+parses, it is eager, and it cannot be differentiated.
 
 Where to put jit and grad
 ~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -116,19 +127,25 @@ ABCMB controls its own jit boundaries. The methods ``get_BG_pre_recomb``,
 
 Follow these rules:
 
-* Do not use ``jax.jit`` on ``model(params)``. Do not use ``jax.vmap`` on it
-  either. The eager first stage cannot be traced.
-* Do not use ``jax.jit`` on ``run_derived`` either. An outer jit removes the
-  device placement that keeps the recombination solver on the CPU.
-* Eager autodiff operates correctly. Use ``jax.grad`` or ``jax.jacfwd`` on
-  ``model(params)``. The derivative passes through the derivation stage.
-* For a sampler, call the two stages separately. Run
-  ``add_derived_parameters`` once for each parameter set. Then call
-  ``run_derived``.
+* Do not use ``jax.jit`` on ``model(params)``. Do not use ``jax.vmap``,
+  ``jax.grad`` or ``jax.jacfwd`` on it either. The eager first stage parses,
+  and parsing cannot be traced.
+* Do not use ``jax.jit`` on ``derive`` or ``run_derived`` either. An outer jit
+  removes the device placement that keeps the recombination solver on the CPU.
+* For a derivative, resolve first and differentiate what follows::
+
+      p = model.resolve_inputs({"omega_b": 0.02237})
+      jax.jacfwd(lambda q: model.run_derived(model.derive(q)).ClTT)(p)
+
+* Differentiating ``run_derived`` alone holds the derivation fixed. That is a
+  different derivative: it excludes the response of ``YHe`` to ``omega_b``
+  through BBN. Include ``derive`` when you want that response.
+* For a sampler, call the stages separately. Run ``resolve_inputs`` and
+  ``derive`` once for each parameter set. Then call ``run_derived``.
 
 ``run_derived`` raises a clear error if you give it raw parameters. It checks
 for the derived keys first. Without this check the failure appears much later,
-as a ``KeyError`` for a key that you never supplied.
+as a ``KeyError`` for a key that you never supplied, such as ``omega_r``.
 
 Finer entry points
 ~~~~~~~~~~~~~~~~~~
