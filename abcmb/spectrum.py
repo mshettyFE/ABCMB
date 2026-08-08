@@ -94,6 +94,33 @@ def j(l: Int[Array, ""] | int, x: Float[Array, " n"]) -> Float[Array, " n"]:
     return jnp.sqrt(jnp.pi / 2 / x) * J(l + 1 / 2, x)
 
 
+# The three m = 0 radial functions (Hu & White Eq. (15), see the table comment
+# above) evaluated from the large-x asymptotic j() rather than the tables.
+# Used past the tabulated support; each is valid only for x > l, since j()
+# goes through sqrt(x^2 - l^2).
+
+
+def phi0_asymptotic(
+    l: Int[Array, ""] | int, x: Float[Array, " n"]
+) -> Float[Array, " n"]:
+    """j_l(x)."""
+    return j(l, x)
+
+
+def phi1_asymptotic(
+    l: Int[Array, ""] | int, x: Float[Array, " n"]
+) -> Float[Array, " n"]:
+    """j_l'(x), from the recurrence j_l' = (l/x) j_l - j_{l+1}."""
+    return l / x * j(l, x) - j(l + 1, x)
+
+
+def phi2_asymptotic(
+    l: Int[Array, ""] | int, x: Float[Array, " n"]
+) -> Float[Array, " n"]:
+    """(3 j_l'' + j_l)/2, with j_l'' eliminated by the same recurrence."""
+    return ((3 * l * (l - 1) - 2 * x**2) * j(l, x) + 6 * x * j(l + 1, x)) / 2 / x**2
+
+
 class SpectrumSolver(eqx.Module):
     r"""
     CMB angular power spectrum computation.
@@ -554,7 +581,8 @@ class SpectrumSolver(eqx.Module):
         Computes angular power spectrum for single multipole.
 
         Line-of-sight integration of Seljak & Zaldarriaga, astro-ph/9603033,
-        whose Eqs. (12)-(16) are the method. Two stages here::
+        whose Eqs. (12)-(16) are the method. The three stages implemented
+        here, with the code they correspond to::
 
             Eq. (12)  the source terms -> sourceT0, sourceT1, sourceT2
                       (SW + ISW, ISW, and the polarization/anisotropic-
@@ -573,21 +601,7 @@ class SpectrumSolver(eqx.Module):
         k^2 measure and one factor of 4 pi -- but a term-by-term comparison
         against the paper will not match without accounting for it.
 
-        Parameters:
-        -----------
-        l : int
-            Multipole :math:`\ell` to evaluate. Must be one of the tabulated
-            multipoles in ``bessel_l_tab`` -- the Bessel kernels exist only
-            there, and the column is looked up by exact match.
-        PT : perturbations.PerturbationTable
-            Perturbation evolution table
-        BG : background.Background
-            Background cosmology module
-        params : dict
-            Dictionary of input and derived parameters
-
         Returns:
-        --------
         tuple
             :math:`(C_\ell^{TT}, C_\ell^{TE}, C_\ell^{EE})` angular power spectra
         """
@@ -613,67 +627,71 @@ class SpectrumSolver(eqx.Module):
             vmap(BG.aH_prime, in_axes=[0, None])(lna_axis, params) * aH
         )  # Derivative of aH w.r.t. conformal time tau.
 
-        # Keep a 1D alias of aH for the rolling-accumulator scan below.
-        aH_1d = aH
-
-        g = g[:, None]
-        g_prime = g_prime[:, None]
-        aH = aH[:, None]
-        expmkappa = expmkappa[:, None]
-        aH_dot = aH_dot[:, None]
-
-        # Perturbations, all (Nlna, Nk) 2D vectors
-        # Cubic Spline is necessary here for accuracy.
+        # Perturbations, all (Nlna, Nk) 2D vectors.
+        # Cubic Spline is necessary here for accuracy; found to be much much
+        # faster than RegularGridInterpolator.
         def interp_column(col):
             return CubicSpline(jnp.log10(PT.k), col, check=False)(jnp.log10(k_axis))
 
-        # Found that this is much much faster than RegularGridInterpolator
+        def to_k_grid(history):
+            """(Nlna+1, Nk_pert) history -> (Nlna, Nk_transfer).
+
+            The [:-1] drops the final lna so the result lines up with
+            lna_axis, which is PT.lna[:-1].
+            """
+            return vmap(interp_column)(history[:-1, :])
+
         photon_sp = PT.species_perturbations["Photon"]
         baryon_sp = PT.species_perturbations["Baryon"]
-        delta_g = vmap(interp_column, in_axes=0, out_axes=0)(photon_sp["delta"][:-1, :])
-        theta_b = vmap(interp_column, in_axes=0, out_axes=0)(baryon_sp["theta"][:-1, :])
-        theta_b_prime = vmap(interp_column, in_axes=0, out_axes=0)(
-            PT.theta_b_prime[:-1, :]
-        )
-        sigma_g = vmap(interp_column, in_axes=0, out_axes=0)(photon_sp["sigma"][:-1, :])
-        Gg0 = vmap(interp_column, in_axes=0, out_axes=0)(photon_sp["G0"][:-1, :])
-        Gg2 = vmap(interp_column, in_axes=0, out_axes=0)(photon_sp["G2"][:-1, :])
+        delta_g = to_k_grid(photon_sp["delta"])
+        theta_b = to_k_grid(baryon_sp["theta"])
+        theta_b_prime = to_k_grid(PT.theta_b_prime)
+        sigma_g = to_k_grid(photon_sp["sigma"])
+        Gg0 = to_k_grid(photon_sp["G0"])
+        Gg2 = to_k_grid(photon_sp["G2"])
         # The metric history is interpolated leaf-wise, so this stays correct
         # for whichever gauge's metric struct the table carries; the metric
         # then turns its own fields into source terms.
-        metric = jax.tree.map(
-            lambda arr: vmap(interp_column, in_axes=0, out_axes=0)(arr[:-1, :]),
-            PT.metric,
+        metric = jax.tree.map(to_k_grid, PT.metric)
+        metric_src = metric.cmb_sources(
+            k_axis,
+            aH[:, None],
+            aH_dot[:, None],
+            g[:, None],
+            g_prime[:, None],
+            expmkappa[:, None],
         )
-        metric_src = metric.cmb_sources(k_axis, aH, aH_dot, g, g_prime, expmkappa)
 
         # Source terms. Identical in both gauges: what differs is entirely
-        # inside metric_src (see gauges.CMBMetricSources).
+        # inside metric_src (see gauges.CMBMetricSources). The [:, None] lifts
+        # the (Nlna,) background histories against the (Nlna, Nk) perturbations.
+        g_c = g[:, None]
+
+        # sourceT0 is Eq. (12)'s three contributions, each behind its own
+        # scale_* switch: Sachs-Wolfe, integrated Sachs-Wolfe, Doppler.
+        sachs_wolfe = g_c * (delta_g / 4.0 + metric_src.sw_potential)
+        doppler = aH[:, None] * (
+            g_c * (theta_b_prime / k_axis**2 + metric_src.theta_offset_prime)
+            + g_prime[:, None] * (theta_b / k_axis**2 + metric_src.theta_offset)
+        )
         sourceT0 = (
-            self.options["scale_sw"] * g * (delta_g / 4.0 + metric_src.sw_potential)
+            self.options["scale_sw"] * sachs_wolfe
             + self.options["scale_isw"] * metric_src.isw_T0
-            + self.options["scale_dop"]
-            * (
-                aH
-                * (
-                    g * (theta_b_prime / k_axis**2 + metric_src.theta_offset_prime)
-                    + g_prime * (theta_b / k_axis**2 + metric_src.theta_offset)
-                )
-            )
+            + self.options["scale_dop"] * doppler
         )
 
         sourceT1 = self.options["scale_isw"] * metric_src.isw_T1
 
-        sourceT2 = self.options["scale_pol"] * g * (2 * sigma_g + Gg0 + Gg2) / 8.0
+        # The photon quadrupole, shared by the polarization temperature source
+        # and the E-mode source up to their prefactors.
+        quadrupole = (2 * sigma_g + Gg0 + Gg2) / 8.0
+        sourceT2 = self.options["scale_pol"] * g_c * quadrupole
+        sourceE = jnp.sqrt(6) * g_c * quadrupole
 
-        sourceE = jnp.sqrt(6) * g * (2 * sigma_g + Gg0 + Gg2) / 8.0
-
-        # Here we perform the time integral to get transfer functions from source functions.
-        # previously, this block explicitly built a 2D (Nlna, Nk) tensor for each ell and summed it down to (Nk).
-        # This newer version refactors into four accumulators of shape (Nk).  For each lna, we compute all four
-        # (Nk), multiply by a trapezoid weight, and then add to the accumulator.  The result is identical but
-        # avoids having to construct a full 2D tensor for each ell, instead just constructing the 1D (Nk) tensor
-        # and accumulating down ell.  Clever "traingle term" added by hand is now handled by the trapezoid weights.
+        # The time integral turning source functions into transfer functions.
+        # Scanned over lna into four (Nk,) accumulators rather than building an
+        # (Nlna, Nk) integrand per ell and summing it down: same result, no 2D
+        # tensor per ell. The trapezoid end correction is carried by `weights`.
 
         # Pre-slice bessel-table columns so the scan body doesn't re-index
         # ..._tab[:, idx] every iteration.
@@ -688,44 +706,31 @@ class SpectrumSolver(eqx.Module):
         col_phi2_l = phi2_tab[:, idx]
         ell_eps_factor = jnp.sqrt(3.0 / 8.0 * (l + 2) * (l + 1) * l * (l - 1))
 
-        def phi0_local(x):
-            x_safe = jnp.where(x >= x0_max, x, x0_max)
-            return jnp.where(
-                x < x0_min,
-                0.0,
-                jnp.where(
-                    x >= x0_max,
-                    j(l, x_safe),
-                    tools.fast_interp(x, x0_min, x0_max, col_phi0_l),
-                ),
-            )
+        # eval_kernel evaluates any of the three kernels in three regimes:
+        #
+        #   x <  x_min   0. The generator starts each column where |f| first
+        #                rises through FLOOR = 1e-10, so the kernel really is
+        #                negligible below it (see _generators/bessel_tables).
+        #   x in range   interpolate the tabulated column.
+        #   x >= x_max   the table stops at the fifth local maximum; past it
+        #                the large-x asymptotic j() takes over.
+        #
+        # x_safe is not cosmetic. j() goes through sqrt(x^2 - l^2), which is
+        # NaN below the turning point x = l, and reverse-mode AD propagates
+        # NaN out of *untaken* jnp.where branches -- so the asymptotic must
+        # never be evaluated off its domain, even where its result is
+        # discarded. fast_interp needs no such guard: it clips its own index
+        # (ABCMBTools.fast_interp), so out-of-range x returns an edge value.
 
-        def phi1_local(x):
-            x_safe = jnp.where(x >= x1_max, x, x1_max)
+        def eval_kernel(x, x_min, x_max, col, asymptotic):
+            x_safe = jnp.where(x >= x_max, x, x_max)
             return jnp.where(
-                x < x1_min,
+                x < x_min,
                 0.0,
                 jnp.where(
-                    x >= x1_max,
-                    l / x_safe * j(l, x_safe) - j(l + 1, x_safe),
-                    tools.fast_interp(x, x1_min, x1_max, col_phi1_l),
-                ),
-            )
-
-        def phi2_local(x):
-            x_safe = jnp.where(x >= x2_max, x, x2_max)
-            return jnp.where(
-                x < x2_min,
-                0.0,
-                jnp.where(
-                    x >= x2_max,
-                    (
-                        (3 * l * (l - 1) - 2 * x_safe**2) * j(l, x_safe)
-                        + 6 * x_safe * j(l + 1, x_safe)
-                    )
-                    / 2
-                    / x_safe**2,
-                    tools.fast_interp(x, x2_min, x2_max, col_phi2_l),
+                    x >= x_max,
+                    asymptotic(l, x_safe),
+                    tools.fast_interp(x, x_min, x_max, col),
                 ),
             )
 
@@ -738,9 +743,9 @@ class SpectrumSolver(eqx.Module):
             acc_T0, acc_T1, acc_T2, acc_E = carry
             sT0_l, sT1_l, sT2_l, sE_l, aH_l, tau_l, w_l = xs_l
             chi_l = (tau0 - tau_l) * k_axis
-            phi0_l = phi0_local(chi_l)
-            phi1_l = phi1_local(chi_l)
-            phi2_l = phi2_local(chi_l)
+            phi0_l = eval_kernel(chi_l, x0_min, x0_max, col_phi0_l, phi0_asymptotic)
+            phi1_l = eval_kernel(chi_l, x1_min, x1_max, col_phi1_l, phi1_asymptotic)
+            phi2_l = eval_kernel(chi_l, x2_min, x2_max, col_phi2_l, phi2_asymptotic)
             eps_l = phi0_l / chi_l**2 * ell_eps_factor
             inv_aH = 1.0 / aH_l
             acc_T0 = acc_T0 + w_l * sT0_l * inv_aH * phi0_l
@@ -750,11 +755,41 @@ class SpectrumSolver(eqx.Module):
             return (acc_T0, acc_T1, acc_T2, acc_E), None
 
         init = (zero_k, zero_k, zero_k, zero_k)
-        xs = (sourceT0, sourceT1, sourceT2, sourceE, aH_1d, tau, weights)
-        # jax.checkpoint on the scan body: during reverse AD, body intermediates
-        # are not saved — the body is re-executed on the backward pass. Kills
-        # the ~21 GiB (Nell, Nlna, Nk) integrand rematerialisation; adds ~2x on
-        # this scan's compute, a small fraction of SS wall time.
+        xs = (sourceT0, sourceT1, sourceT2, sourceE, aH, tau, weights)
+        # jax.checkpoint on the scan body: body intermediates are not saved,
+        # the body is re-executed on the backward pass instead. This is inert
+        # in the forward and jvp/jacfwd paths -- remat only changes how a
+        # *reverse*-mode backward pass is scheduled.
+        #
+        # It is worth having because the saved residuals scale as
+        # (Nell, Nlna, Nk), which is 675M elements = 5.4 GB each at the default
+        # l_max=2500. Measured peak device memory for jax.grad of get_Cl at
+        # fixed PT/BG, with vs without:
+        #
+        #     l_max=1000  (61, 500, 763)    0.30 GB  vs  0.38 GB
+        #     l_max=2500  (99, 500, 1704)   0.35 GB  vs  0.97 GB
+        #
+        # -- 2.8x at the default, and growing with l_max; bigger runs OOM.
+        #
+        # Reaching reverse mode at all takes a non-default adjoint. Measured
+        # for jax.grad over the full pipeline at l_max=100:
+        #
+        #     ForwardMode (default)       ValueError -- reverse-mode AD does
+        #                                 not work through lax.while_loop,
+        #                                 which adaptive stepping needs
+        #     RecursiveCheckpointAdjoint  AssertionError inside equinox's
+        #                                 checkpointed_while_loop, from the
+        #                                 vendored HyRex HeII solve
+        #                                 (hyrex/helium.py solve_HeII_full)
+        #     BacksolveAdjoint            NotImplementedError -- incompatible
+        #                                 with events, which HyRex uses
+        #     DirectAdjoint               works (427 s at l_max=100; it
+        #                                 unrolls rather than checkpointing)
+        #
+        # So end-to-end reverse AD is possible via DirectAdjoint, and reverse
+        # over the spectrum stage alone always works. See the FAQ, which
+        # steers users to jacfwd -- with ~10 parameters and ~1e3 outputs,
+        # forward mode is usually the right tool regardless.
         (transferT0, transferT1, transferT2, transferE), _ = lax.scan(
             jax.checkpoint(scan_step), init, xs
         )
@@ -763,31 +798,13 @@ class SpectrumSolver(eqx.Module):
         ### END OF TRANSFER FUNCTION ###
 
         # Now we integrate the transfer functions along the line of sight, and return.
-        integrandTT = (
-            4.0
-            * jnp.pi
-            * params["A_s"]
-            * (k_axis / self.options["k_pivot"]) ** (params["n_s"] - 1.0)
-            * transferT**2
-            / k_axis
-        )
+        power_law = (k_axis / self.options["k_pivot"]) ** (params["n_s"] - 1.0)
+
+        integrandTT = 4.0 * jnp.pi * params["A_s"] * power_law * transferT**2 / k_axis
         integrandTE = (
-            4.0
-            * jnp.pi
-            * params["A_s"]
-            * (k_axis / self.options["k_pivot"]) ** (params["n_s"] - 1.0)
-            * transferT
-            * transferE
-            / k_axis
+            4.0 * jnp.pi * params["A_s"] * power_law * transferT * transferE / k_axis
         )
-        integrandEE = (
-            4.0
-            * jnp.pi
-            * params["A_s"]
-            * (k_axis / self.options["k_pivot"]) ** (params["n_s"] - 1.0)
-            * transferE**2
-            / k_axis
-        )
+        integrandEE = 4.0 * jnp.pi * params["A_s"] * power_law * transferE**2 / k_axis
 
         return (
             jnp.trapezoid(integrandTT, k_axis),
