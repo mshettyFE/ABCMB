@@ -22,6 +22,12 @@ Regenerate with::
 
     python -m abcmb._generators.bessel_tables
 
+These are the m = 0 line-of-sight radial functions of Hu & White,
+astro-ph/9702170 Eq. (15): j_l^(00) = j_l, j_l^(10) = j_l', and
+j_l^(20) = (3 j_l'' + j_l)/2. The E-mode kernel of that same equation,
+j_l^(22) = sqrt(3/8 (l+2)!/(l-2)!) j_l/x^2, is not tabulated -- ``spectrum.py``
+builds it from the j_l column.
+
 Tabulation convention :
 
 * Each column is one multipole from the ``l`` ladder; the ladder is
@@ -109,6 +115,16 @@ def _x_lo(fn, ell: int, x_hi: float) -> float:
 def build_tables(ells) -> dict[str, np.ndarray]:
     """Return ``{"l", "xphi0", "phi0", "xphi1", "phi1", "xphi2", "phi2"}``."""
     ells = np.asarray(ells, dtype=np.int64)
+
+    # Contract the consumer relies on, checked where the table is made rather
+    # than on every import of abcmb.spectrum.
+    if ells.size == 0 or int(ells[0]) != 2:
+        raise ValueError(
+            f"the multipole ladder must start at ell=2; got "
+            f"{ells[:4].tolist() if ells.size else '[]'}"
+        )
+    if not np.all(np.diff(ells) > 0):
+        raise ValueError("the multipole ladder must be strictly increasing")
     out: dict[str, np.ndarray] = {"l": ells}
     for name, fn in KERNELS.items():
         xs = np.empty((N_X, ells.size))

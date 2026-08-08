@@ -25,19 +25,24 @@ MINIMUM_ALLOWED_L = 2
 
 
 # Tabulated spherical-Bessel kernels over (x, l): phi0 = j_l, phi1 = j_l',
-# phi2 = (3 j_l'' + j_l)/2 -- the three line-of-sight source kernels. Each has
-# its own x grid because each is tabulated over its own function's support.
+# phi2 = (3 j_l'' + j_l)/2 -- the three line-of-sight source kernels. These
+# are the m = 0 radial functions of Hu & White, astro-ph/9702170 Eq. (15):
+# j_l^(00), j_l^(10), j_l^(20), paired in Cl_one_ell with sourceT0/T1/T2
+# respectively. The E-mode kernel j_l^(22) = sqrt(3/8 (l+2)!/(l-2)!) j_l/x^2
+# from the same equation is built there from phi0 rather than tabulated.
+# Line-of-sight integration itself is Seljak & Zaldarriaga, astro-ph/9603033.
+# Each kernel has its own x grid because each is tabulated over its own
+# function's support.
 # Regenerate with abcmb/_generators/bessel_tables.py (scipy-based, offline).
 
 # Axis names: num_ell_tab is the *tabulated* ell grid
 # num_x is the per-kernel sample count along its own x grid.
 _bessel_tables = np.load(file_dir + "/data/bessel_tables.npz")
 
-# Sorted sparse list of tabulated ell values
+# Sorted sparse list of tabulated ell values. That it starts at ell=2 and
+# increases strictly is checked by _generators/bessel_tables.build_tables,
+# where the table is made
 bessel_l_tab: Int[Array, " num_ell_tab"] = jnp.array(_bessel_tables["l"], dtype="int")
-assert int(bessel_l_tab[0]) == MINIMUM_ALLOWED_L, (
-    f"bessel_l_tab must start at ell={MINIMUM_ALLOWED_L}"
-)
 
 xphi0_tab: Float[Array, "num_x num_ell_tab"] = jnp.array(_bessel_tables["xphi0"])
 phi0_tab: Float[Array, "num_x num_ell_tab"] = jnp.array(_bessel_tables["phi0"])
@@ -47,7 +52,7 @@ xphi2_tab: Float[Array, "num_x num_ell_tab"] = jnp.array(_bessel_tables["xphi2"]
 phi2_tab: Float[Array, "num_x num_ell_tab"] = jnp.array(_bessel_tables["phi2"])
 
 
-def _n_cols_through(ell, what):
+def _n_cols_through(ell: int, what: str) -> int:
     """
     Number of leading ``bessel_l_tab`` columns needed to bracket ``ell``.
 
@@ -77,15 +82,15 @@ phi2_tab = jax.device_put(phi2_tab, _tab_device)
 
 
 # large-x asymptotic expansion of spherical bessel functions
-def Q(l, x):
+def Q(l: Float[Array, ""] | float, x: Float[Array, " n"]) -> Float[Array, " n"]:
     return jnp.sqrt(x**2 - l**2) - l * jnp.pi / 2 + l * jnp.arcsin(l / x)
 
 
-def J(l, x):
+def J(l: Float[Array, ""] | float, x: Float[Array, " n"]) -> Float[Array, " n"]:
     return jnp.sqrt(2 / jnp.pi / jnp.sqrt(x**2 - l**2)) * jnp.cos(Q(l, x) - jnp.pi / 4)
 
 
-def j(l, x):
+def j(l: Int[Array, ""] | int, x: Float[Array, " n"]) -> Float[Array, " n"]:
     return jnp.sqrt(jnp.pi / 2 / x) * J(l + 1 / 2, x)
 
 
@@ -141,7 +146,7 @@ class SpectrumSolver(eqx.Module):
         self,
         k_axis_transfer: Float[Array, " n_k_transfer"],
         options: "Options",
-    ):
+    ) -> None:
         """
         Initialize CMB spectrum solver.
         """
@@ -172,7 +177,9 @@ class SpectrumSolver(eqx.Module):
             self.evaluated_ells = jnp.arange(MINIMUM_ALLOWED_L, self.ellmax + 1)
             self.sampled_ells = bessel_l_tab[: _n_cols_through(self.ellmax, "l_max")]
 
-    def _primordial_spectrum(self, k: Float[Array, " k"], params) -> Float[Array, " k"]:
+    def _primordial_spectrum(
+        self, k: Float[Array, " k"], params: "Params"
+    ) -> Float[Array, " k"]:
         """
         Compute primordial curvature power spectrum.
 
@@ -278,11 +285,11 @@ class SpectrumSolver(eqx.Module):
 
     def lensing_Cl(
         self,
-        ells: Float[Array, " l"],
+        ells: Int[Array, " num_lensing_ell"],
         PT: "PerturbationTable",
         BG: "Background",
         params: "Params",
-    ) -> Float[Array, " l"]:
+    ) -> Float[Array, " num_lensing_ell"]:
         """
         Angular lensing power spectrum at multipole ell.
 
@@ -335,33 +342,33 @@ class SpectrumSolver(eqx.Module):
         Float[Array, " num_lensing_ell"],
     ]:
         """
-         Compute lensed CMB power spectra.
+        Compute lensed CMB power spectra.
 
-         All-sky correlation-function method of Challinor & Lewis,
-         astro-ph/0502425 (PRD 71, 103010). The unlensed spectra are
-         transformed to real-space correlation functions, the deflection
-         smearing is applied there through the X_imj factors, and the result
-         is transformed back by Gauss-Legendre quadrature.
+        All-sky correlation-function method of Challinor & Lewis,
+        astro-ph/0502425 (PRD 71, 103010). The unlensed spectra are
+        transformed to real-space correlation functions, the deflection
+        smearing is applied there through the X_imj factors, and the result
+        is transformed back by Gauss-Legendre quadrature.
 
-         Equation numbers below are that paper's; the notation here follows
-         it, and CLASS implements the same method (lensing.c)::
+        Equation numbers below are that paper's; the notation here follows
+        it, and CLASS implements the same method (lensing.c)::
 
-             Cgl, Cgl2   Eq. (35)  the d11 / d(-1)1 deflection covariances
-             sigma2      unnumbered, after Eq. (35): sigma^2 = Cgl(0) - Cgl(b),
-                                   hence Cgl[-1] (mu = 1) minus the rest
-             X_imn       Eq. (37)  defining integral
-             ksi         Eq. (38)  temperature
-             X000, X220  Eqs. (39), (40)
-             ksip        Eq. (54)  EE, +
-             ksim        Eq. (55)  EE, -
-             ksix        Eq. (56)  TE
-             X022        Eq. (57)
-             X121        Eq. (58)
-             X132        Eq. (59)
-             X242        Eq. (60)
+            Cgl, Cgl2   Eq. (35)  the d11 / d(-1)1 deflection covariances
+            sigma2      unnumbered, after Eq. (35): sigma^2 = Cgl(0) - Cgl(b),
+                                  hence Cgl[-1] (mu = 1) minus the rest
+            X_imn       Eq. (37)  defining integral
+            ksi         Eq. (38)  temperature
+            X000, X220  Eqs. (39), (40)
+            ksip        Eq. (54)  EE, +
+            ksim        Eq. (55)  EE, -
+            ksix        Eq. (56)  TE
+            X022        Eq. (57)
+            X121        Eq. (58)
+            X132        Eq. (59)
+            X242        Eq. (60)
 
         Returns:
-             (ClTT, ClTE, ClEE) lensed power spectra
+            (ClTT, ClTE, ClEE) lensed power spectra
         """
         # num_mu is static (it comes from options), so scipy is fine
         # The appended mu = 1 node carries weight 0: it extends the grid to
@@ -400,11 +407,9 @@ class SpectrumSolver(eqx.Module):
 
         llp1 = ells * (ells + 1)
 
-        def corr(
-            Cl: Float[Array, " num_lensing_ell"],
-            kernel: Float[Array, "num_mu num_lensing_ell"],
-        ) -> Float[Array, " num_mu"]:
-            """(1/4pi) Sum_l (2l+1) Cl K_l(mu), over the ell axis -> (Nmu,)."""
+        def corr(Cl, kernel):
+            """(1/4pi) Sum_l (2l+1) Cl K_l(mu): (num_lensing_ell,) against a
+            (num_mu, num_lensing_ell) kernel, summed over ell -> (num_mu,)."""
             return jnp.sum((2.0 * ells + 1) * Cl * kernel, axis=1) / (4.0 * jnp.pi)
 
         # Lensing angular correlation function. sigma2 is the variance of the
@@ -476,9 +481,6 @@ class SpectrumSolver(eqx.Module):
             * ((2 * X022_prime * X000_prime + X220**2) * d20 + X220 * X242 * dm24),
         )
 
-        # ClTT = 2.*jnp.pi * jnp.trapezoid(ksi[:, None]*d00, mu, axis=0) + ClTT_unlensed
-        # ClTE = 2.*jnp.pi * jnp.trapezoid(ksix[:, None]*d20, mu, axis=0) + ClTE_unlensed
-        # ClEE = 1./2. * 2.*jnp.pi * jnp.trapezoid(ksip[:, None]*d22+ksim[:, None]*d2m2, mu, axis=0) + ClEE_unlensed
         w = w[:, None]
         ClTT = 2 * jnp.pi * jnp.sum(ksi[:, None] * d00 * w, axis=0)
         ClTE = 2 * jnp.pi * jnp.sum(ksix[:, None] * d20 * w, axis=0)
@@ -492,7 +494,13 @@ class SpectrumSolver(eqx.Module):
 
         return (ClTT, ClTE, ClEE)
 
-    def get_Cl(self, PT: "PerturbationTable", BG: "Background", params: "Params"):
+    def get_Cl(
+        self, PT: "PerturbationTable", BG: "Background", params: "Params"
+    ) -> tuple[
+        Float[Array, " num_ell"],
+        Float[Array, " num_ell"],
+        Float[Array, " num_ell"],
+    ]:
         """
         Compute angular power spectra for multiple multipoles.
 
@@ -535,11 +543,35 @@ class SpectrumSolver(eqx.Module):
 
         return get_lensed_Cls() if self.options["lensing"] else get_unlensed_Cls()
 
-    def Cl_one_ell(self, l, PT, BG, params):
+    def Cl_one_ell(
+        self,
+        l: Int[Array, ""] | int,
+        PT: "PerturbationTable",
+        BG: "Background",
+        params: "Params",
+    ) -> tuple[Float[Array, ""], Float[Array, ""], Float[Array, ""]]:
         r"""
         Computes angular power spectrum for single multipole.
 
-        Integrates transfer functions over wavenumber.
+        Line-of-sight integration of Seljak & Zaldarriaga, astro-ph/9603033,
+        whose Eqs. (12)-(16) are the method. Two stages here::
+
+            Eq. (12)  the source terms -> sourceT0, sourceT1, sourceT2
+                      (SW + ISW, ISW, and the polarization/anisotropic-
+                      scattering Pi term), plus sourceE
+            Eq. (13)  Delta_l(k) = Int dtau S(k,tau) j_l[k(tau0 - tau)]
+                      -> the lax.scan over lna accumulating transferT0/T1/T2/E.
+                      The single j_l of Eq. (13) is split across the m = 0
+                      radial functions of Hu & White astro-ph/9702170 Eq. (15)
+                      (see the module comment on the tables above)
+            Eq. (9)   Cl = (4pi)^2 Int k^2 dk P_psi(k) |Delta_l(k)|^2
+                      -> the closing jnp.trapezoid over k_axis
+
+        Normalization differs from Eq. (9) as written: the integrands here are
+        ``4 pi A_s (k/k_pivot)^(n_s-1) Delta^2 / k``. Both forms are the same
+        quantity -- P_R(k) = A_s (k/k_pivot)^(n_s-1) 2 pi^2 / k^3 absorbs the
+        k^2 measure and one factor of 4 pi -- but a term-by-term comparison
+        against the paper will not match without accounting for it.
 
         Parameters:
         -----------
