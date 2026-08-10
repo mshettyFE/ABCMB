@@ -132,9 +132,11 @@ def test_accuracy_checker(n_nu_massive, h=0.6762):
         err_Pk = abs(CLA_Pk - ABC_Pk) / CLA_Pk
         print(err_Pk.max())
 
-        assert max(err_tt) <= 0.01, f"Accuracy check failed at TT: {err_tt}"
-        assert max(err_ee) <= 0.01, f"Accuracy check failed at EE: {err_ee}"
-        assert max(err_Pk) <= 0.01, f"Accuracy check failed at P(k): {err_Pk}"
+        # 0.003 is ~45% headroom over the measured maxima at the default
+        # solver settings (TT 0.21%, EE 0.19%, Pk 0.18%).
+        assert max(err_tt) <= 0.003, f"Accuracy check failed at TT: {err_tt}"
+        assert max(err_ee) <= 0.003, f"Accuracy check failed at EE: {err_ee}"
+        assert max(err_Pk) <= 0.003, f"Accuracy check failed at P(k): {err_Pk}"
 
     except Exception as e:
         pytest.fail(f"accuracy_checks raised an exception: {e}")

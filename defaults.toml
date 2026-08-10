@@ -93,10 +93,10 @@ lna_tau_points = 10000     # (option, int) Points of the conformal-time tabulati
 lna_output_points = 500    # (option, int) Time-grid points of the perturbation output table (transfer start to today); source integrations interpolate from this grid.
 lna_lensing_points = 500   # (option, int) Time-grid points of the lensing-potential Cl integration (recombination to today; used only when lensing=True).
 k_split_PE = 0.01          # (option, float) k threshold splitting solver tolerances.
-rtol_small_k_PE = 1e-05    # (option, float) Relative tolerance, small k.
-rtol_large_k_PE = 0.0001   # (option, float) Relative tolerance, large k.
+rtol_small_k_PE = 1e-05    # (option, float) Relative tolerance, small k. this band controls the low multipoles
+rtol_large_k_PE = 0.0001   # (option, float) Relative tolerance, large k. Controls errors for l > ~100 .
 atol_small_k_PE = 1e-10    # (option, float) Absolute tolerance, small k.
-atol_large_k_PE = 1e-06    # (option, float) Absolute tolerance, large k.
+atol_large_k_PE = 1e-06    # (option, float) Absolute tolerance, large k. Tighten together with rtol_large_k_PE (see there).
 pcoeff_PE = 0.25           # (option, float) PID controller P coefficient.
 icoeff_PE = 0.8            # (option, float) PID controller I coefficient.
 dcoeff_PE = 0.0            # (option, float) PID controller D coefficient.

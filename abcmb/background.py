@@ -634,7 +634,7 @@ class Background(BackgroundPreRecomb):
 
         term = ODETerm(integrand)
         stepsize_controller = PIDController(
-            pcoeff=0.4, icoeff=0.3, dcoeff=0, rtol=1.0e-3, atol=1.0e-6
+            pcoeff=0.4, icoeff=0.3, dcoeff=0, rtol=1.0e-8, atol=1.0e-10
         )
         adjoint = self.adjoint()
 
@@ -677,7 +677,7 @@ class Background(BackgroundPreRecomb):
 
         term = ODETerm(integrand)
         stepsize_controller = PIDController(
-            pcoeff=0.4, icoeff=0.3, dcoeff=0, rtol=1.0e-3, atol=1.0e-6
+            pcoeff=0.4, icoeff=0.3, dcoeff=0, rtol=1.0e-8, atol=1.0e-10
         )
         adjoint = self.adjoint()
 

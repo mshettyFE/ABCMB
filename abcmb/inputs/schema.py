@@ -132,8 +132,9 @@ OPTION_SCHEMA = (
         "Gauge the perturbations are integrated in: 'synchronous' or "
         "'newtonian'. The per-species delta/theta in the PerturbationTable "
         "are not the same between the two. Note the *_PE solver tolerances "
-        "are tuned for synchronous gauge and are not converged in newtonian "
-        "gauge -- Model warns and names the values to use.",
+        "are tuned for synchronous gauge and are not "
+        "converged in newtonian gauge -- Model warns and names the "
+        "values to use.",
         group=Group.SPECIES,
         choices=("synchronous", "newtonian"),
     ),
@@ -451,14 +452,14 @@ OPTION_SCHEMA = (
         "rtol_small_k_PE",
         1.0e-5,
         float,
-        "Relative tolerance, small k.",
+        "Relative tolerance, small k. this band controls the low multipoles ",
         group=Group.SOLVER,
     ),
     Spec(
         "rtol_large_k_PE",
         1.0e-4,
         float,
-        "Relative tolerance, large k.",
+        "Relative tolerance, large k. Controls errors for l > ~100 .",
         group=Group.SOLVER,
     ),
     Spec(
@@ -472,7 +473,8 @@ OPTION_SCHEMA = (
         "atol_large_k_PE",
         1.0e-6,
         float,
-        "Absolute tolerance, large k.",
+        "Absolute tolerance, large k. Tighten together with "
+        "rtol_large_k_PE (see there).",
         group=Group.SOLVER,
     ),
     Spec("pcoeff_PE", 0.25, float, "PID controller P coefficient.", group=Group.SOLVER),

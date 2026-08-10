@@ -1,4 +1,5 @@
 import os
+import warnings
 from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING
 
@@ -44,6 +45,33 @@ _DERIVED_KEY_SENTINELS = (
     "R_nu",
     "H0",
 )
+
+
+def _warn_if_reverse_adjoint(adjoint: type) -> None:
+    """
+    Warn when a reverse-capable diffrax adjoint is selected.
+
+    The default ``ForwardMode`` refuses reverse-mode AD outright (adaptive
+    stepping uses ``lax.while_loop``, which JAX cannot transpose), so nothing
+    silently goes wrong there. Choosing a reverse-capable adjoint removes that
+    guard, and ``DirectAdjoint`` -- the only one that runs the full pipeline --
+    has been measured returning a wrong gradient with no error. See docs/FAQ.rst.
+
+    A warning rather than an error: reverse mode is not always wrong, and
+    validating it against jax.jvp at your own settings is a legitimate thing
+    to do. It just must not be assumed.
+    """
+    if adjoint is diffrax.ForwardMode:
+        return
+    warnings.warn(
+        f"adjoint={getattr(adjoint, '__name__', adjoint)} enables reverse-mode "
+        "AD, which ABCMB has been measured to get silently wrong -- no error, "
+        "and reproducible within a process. Prefer jax.jvp/jacfwd with the "
+        "default ForwardMode adjoint; forward mode is also cheaper for ~10 "
+        "parameters. If you need reverse mode, validate it against jax.jvp at "
+        "your own solver settings first (see docs/FAQ.rst).",
+        stacklevel=3,
+    )
 
 
 def _check_derived(params: Mapping[str, object]) -> None:
@@ -112,6 +140,7 @@ class Model(eqx.Module):
         # Pull adjoint out of kwargs before resolve_options — it must NOT end up
         # inside self.options (a non-JAX pytree leaf breaks filter_jit tracing).
         adjoint = kwargs.pop("adjoint", diffrax.ForwardMode)
+        _warn_if_reverse_adjoint(adjoint)
 
         # Keep the user's options exactly as supplied (keys as typed, defaults
         # absent) — save_run records these so a run file replays user intent.

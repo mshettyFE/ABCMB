@@ -22,7 +22,14 @@ You should not need to know very much about JAX in order to use ABCMB.  `JAX <ht
 
 How do I take gradients of ABCMB output?
 ----------------------------------------
-In general it is best to use ``jax.jacfwd``, or forward accumulation, with ABCMB.  There are many internal states to trace over, which can quickly push memory requirements out of hand, when attempting to use reverse AD like ``jax.grad`` or ``jax.jacrev`` with ABCMB.
+Use ``jax.jvp`` or ``jax.jacfwd`` -- forward accumulation.  Do not use reverse
+AD (``jax.grad``, ``jax.jacrev``) unless you have validated it for your own
+configuration. Forward mode is in general cheaper (smaller number of input parameters 
+compared to number of output multipoles).
+
+If you need reverse mode -- for a scalar likelihood gradient, say -- validate
+it against ``jax.jvp`` at your own settings before trusting it, and re-validate
+whenever you change solver tolerances or step caps.
 
 Why am I seeing my code recompile?
 ----------------------------------

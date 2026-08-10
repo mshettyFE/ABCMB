@@ -602,7 +602,6 @@ class SpectrumSolver(eqx.Module):
         against the paper will not match without accounting for it.
 
         Returns:
-        tuple
             :math:`(C_\ell^{TT}, C_\ell^{TE}, C_\ell^{EE})` angular power spectra
         """
         # The kernel tables are keyed by column position, so translate the
